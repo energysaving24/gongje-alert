@@ -1,0 +1,64 @@
+name: 공제조합 감시 (회생파산·법원경매·온비드)
+
+on:
+  schedule:
+    - cron: "0 9 * * 1-5"   # UTC 09:00 = 한국시간 평일(월~금) 18:00 (GitHub 사정으로 수 분~수십 분 지연될 수 있음)
+  workflow_dispatch:         # Actions 탭에서 수동 실행 가능
+    inputs:
+      mode:
+        description: "run = 정상 실행 / test-kakao = 카톡 연결 테스트 / dry = 카톡 없이 결과만 로그 출력"
+        default: run
+        type: choice
+        options: [run, test-kakao, dry]
+
+permissions:
+  contents: write            # state/seen.json 저장용
+
+concurrency:
+  group: scourt-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 패키지 설치
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: 실행
+        env:
+          KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+          KAKAO_REFRESH_TOKEN: ${{ secrets.KAKAO_REFRESH_TOKEN }}
+          KAKAO_CLIENT_SECRET: ${{ secrets.KAKAO_CLIENT_SECRET }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
+          ONBID_MOVABLE_PATH: ${{ vars.ONBID_MOVABLE_PATH }}
+          SOURCES: scourt,court_auction,onbid
+          AUCTION_MAX_DETAILS: "60"
+          AUCTION_MIN_ROUND: "2"      # 법원경매: 2회차 입찰부터 알림 (최초 입찰 제외)
+          KEYWORDS: 공제조합
+          DRY_RUN: ${{ github.event.inputs.mode == 'dry' && '1' || '0' }}
+        run: |
+          if [ "${{ github.event.inputs.mode }}" = "test-kakao" ]; then
+            python main.py test-kakao
+          else
+            python main.py
+          fi
+
+      - name: 확인 기록 저장
+        if: always() && github.event.inputs.mode != 'test-kakao' && github.event.inputs.mode != 'dry'
+        run: |
+          git config user.name "scourt-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/seen.json || true
+          git diff --cached --quiet || (git commit -m "확인 기록 $(TZ=Asia/Seoul date +%F)" && git push)
