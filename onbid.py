@@ -1,10 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-온비드(한국자산관리공사) 공매 물건 검사 - 공공데이터포털 '차세대 온비드' OpenAPI 사용
+온비드(한국자산관리공사) 공매 물건 검사 - 공공데이터포털 '차세대 온비드' OpenAPI v2.0
+(활용가이드 01·02, 배포일 2026/04/06 기준)
 
-- 부동산 물건목록 : data.go.kr 15157207  (/OnbidRlstListSrvc2/getRlstCltrList2)
-- 동산 물건목록   : data.go.kr 15157232  (요청주소는 활용신청 후 확인 → ONBID_MOVABLE_PATH 로 지정)
-- 현재 입찰 진행 중인 전체 물건을 받아 물건명·용도·기관명 등 모든 항목에서 키워드 검색
+- 부동산 물건목록 : https://apis.data.go.kr/B010003/OnbidRlstListSrvc2/getRlstCltrList2
+- 동산 물건목록   : https://apis.data.go.kr/B010003/OnbidMvastListSrvc2/getMvastCltrList2
+  (출자증권·회원권 등 '권리/증권'은 동산에 속함)
+
+검색 방식
+  1) 물건명 검색  : onbidCltrNm=키워드 로 서버에서 바로 검색 (부동산·동산 모두, 호출 수 적음)
+  2) 동산 전체확인: 동산 목록 전체를 받아 물건명·권리증서명·재산명 등 모든 항목에서 키워드 확인
+                   (물건명엔 없고 '권리증서명' 등에만 공제조합이 적힌 경우 대비)
+- 필수값: serviceKey, pageNo, numOfRows, resultType, prptDivCd(쉼표로 여러 개), pvctTrgtYn(Y/N)
 - 이미 알린 물건(물건관리번호+공매조건번호)은 다시 알리지 않음
 """
 import os
@@ -16,16 +23,25 @@ import requests
 BASE = "https://apis.data.go.kr/B010003"
 APIS = {
     "부동산": os.getenv("ONBID_REALTY_PATH") or "/OnbidRlstListSrvc2/getRlstCltrList2",
-    "동산": os.getenv("ONBID_MOVABLE_PATH") or "/OnbidMvprpListSrvc2/getMvprpCltrList2",
+    "동산": os.getenv("ONBID_MOVABLE_PATH") or "/OnbidMvastListSrvc2/getMvastCltrList2",
 }
-# 재산유형코드 (prptDivCd)
+# 동산은 목록 전체를 받아 모든 항목에서 키워드 확인 (부동산은 물건명 검색만)
+FULL_SCAN = [s.strip() for s in os.getenv("ONBID_FULL_SCAN", "동산").split(",") if s.strip()]
+
+# 재산유형코드 (prptDivCd) - 쉼표로 묶어 한 번에 요청
 PRPT_CODES = {
     "0002": "공유재산", "0003": "금융권담보재산", "0004": "불용품", "0005": "기타일반재산",
     "0006": "유입재산", "0007": "압류재산", "0008": "수탁재산", "0010": "국유재산",
     "0011": "공공개발재산", "0013": "파산자산",
 }
+ALL_PRPT = ",".join(PRPT_CODES)
 ONBID_HOME = "https://www.onbid.co.kr"
-PAGE = 1000
+PAGE = int(os.getenv("ONBID_PAGE_SIZE", "500"))
+MAX_PAGES = 60          # 안전장치 (500건 × 60페이지 = 3만건)
+
+
+class OnbidError(Exception):
+    pass
 
 
 def _items(obj):
@@ -47,89 +63,83 @@ def _items(obj):
     return []
 
 
-def _result_code(j):
-    for path in (("response", "header", "resultCode"), ("header", "resultCode"), ("result", "resultCode")):
-        cur = j
-        for p in path:
-            cur = cur.get(p) if isinstance(cur, dict) else None
-        if cur is not None:
-            return str(cur)
+def _find(j, key):
+    """중첩 dict 안에서 key 값 찾기 (header.resultCode, body.totalCount 등)"""
+    if isinstance(j, dict):
+        if key in j and not isinstance(j[key], (dict, list)):
+            return j[key]
+        for v in j.values():
+            r = _find(v, key)
+            if r is not None:
+                return r
     return None
 
 
-def _total(j):
-    for path in (("response", "body", "totalCount"), ("body", "totalCount")):
-        cur = j
-        for p in path:
-            cur = cur.get(p) if isinstance(cur, dict) else None
-        if cur is not None:
-            try:
-                return int(cur)
-            except Exception:
-                pass
-    return None
+def _call(key, path, params, log):
+    q = {"serviceKey": key, "resultType": "json", **params}
+    for t in range(3):
+        try:
+            r = requests.get(BASE + path, params=q, timeout=90)
+            break
+        except requests.exceptions.RequestException as e:
+            if t == 2:
+                raise OnbidError(f"접속 실패: {str(e)[:60]}")
+            log(f"   재시도({t+1}/3): {str(e)[:60]}")
+            time.sleep(10)
+    time.sleep(0.3)   # 초당 10건 제한
+    text = r.text.strip()
+    if text.startswith("<"):
+        # 인증키 오류 등은 XML로 오는 경우가 있음
+        m = re.search(r"<(?:returnReasonCode|resultCode)>(\d+)<", text)
+        msg = re.search(r"<(?:returnAuthMsg|resultMsg)>([^<]+)<", text)
+        raise OnbidError(f"오류 응답 코드 {m.group(1) if m else '?'} {msg.group(1) if msg else text[:100]}")
+    try:
+        j = r.json()
+    except Exception:
+        raise OnbidError(f"응답 해석 실패(HTTP {r.status_code}): {text[:120]}")
+    code = _find(j, "resultCode")
+    code = None if code is None else str(code).zfill(2)
+    if code == "03":
+        return [], 0
+    if code not in (None, "00"):
+        raise OnbidError(f"API 오류 코드 {code} {_find(j, 'resultMsg') or ''}")
+    rows = _items(j)
+    try:
+        total = int(_find(j, "totalCount") or 0)
+    except Exception:
+        total = 0
+    return rows, total
 
 
-def fetch_all(key, path, log):
-    """한 API의 (재산유형 × 수의계약여부) 전체 페이지 수집"""
+def fetch(key, path, log, extra=None):
+    """수의계약여부 N/Y 각각 전체 페이지 수집"""
     out, calls = [], 0
-    shown_sample = [False]
-    shown03 = [False]
-    for prpt in PRPT_CODES:
-        for pvct in ("N", "Y"):
-            page = 1
-            while True:
-                params = {"serviceKey": key, "pageNo": page, "numOfRows": PAGE, "resultType": "json",
-                          "prptDivCd": prpt, "pvctTrgtYn": pvct}
-                for t in range(3):
-                    try:
-                        r = requests.get(BASE + path, params=params, timeout=90)
-                        break
-                    except requests.exceptions.RequestException as e:
-                        if t == 2:
-                            raise
-                        log(f"   재시도({t+1}/3): {str(e)[:60]}")
-                        time.sleep(10)
-                calls += 1
-                time.sleep(0.5)
-                try:
-                    j = r.json()
-                except Exception:
-                    raise RuntimeError(f"응답 해석 실패(HTTP {r.status_code}): {r.text[:120]}")
-                code = _result_code(j)
-                if code == "03" and not shown03[0]:
-                    shown03[0] = True
-                    log(f"   [진단] 03(자료없음) 응답 예: prptDivCd={prpt} pvct={pvct}: {r.text[:200]}")
-                if code == "03":           # 해당 조건 물건 없음
-                    break
-                if code not in (None, "00"):
-                    raise RuntimeError(f"API 오류 코드 {code}: {str(j)[:120]}")
-                rows = _items(j)
-                if not rows and not shown_sample[0]:
-                    shown_sample[0] = True
-                    log(f"   [진단] 물건 0건 응답 prptDivCd={prpt} pvct={pvct} 결과코드={code}: {r.text[:300]}")
-                for x in rows:
-                    x["_prpt"] = PRPT_CODES[prpt]
-                out += rows
-                total = _total(j)
-                if len(rows) < PAGE or (total is not None and page * PAGE >= total):
-                    break
-                page += 1
-    log(f"   {calls}회 호출, {len(out)}건")
-    return out
-
-
-def name_of(x):
-    for k in ("cltrNm", "onbidCltrNm", "cltrName", "pbctCltrNm"):
-        if x.get(k):
-            return str(x[k])
-    return ""
+    for pvct in ("N", "Y"):
+        for page in range(1, MAX_PAGES + 1):
+            params = {"pageNo": page, "numOfRows": PAGE, "prptDivCd": ALL_PRPT, "pvctTrgtYn": pvct}
+            if extra:
+                params.update(extra)
+            rows, total = _call(key, path, params, log)
+            calls += 1
+            out += rows
+            if len(rows) < PAGE or page * PAGE >= total:
+                break
+    return out, calls
 
 
 def _bid_period(x):
-    b = next((str(x[k]) for k in x if re.search(r"(bid|pbct).*(Bgng|Begn|Strt)", k, re.I) and x[k]), "")
-    e = next((str(x[k]) for k in x if re.search(r"(bid|pbct).*(End|Cls)", k, re.I) and x[k]), "")
-    return f"입찰: {b} ~ {e}" if (b or e) else ""
+    def fmt(s):
+        s = str(s or "")
+        return f"{s[:4]}.{s[4:6]}.{s[6:8]} {s[8:10]}:{s[10:12]}" if len(s) >= 12 else s
+    b, e = x.get("cltrBidBgngDt"), x.get("cltrBidEndDt")
+    return f"입찰: {fmt(b)} ~ {fmt(e)}" if (b or e) else ""
+
+
+def _won(v):
+    try:
+        return f"{int(float(str(v).replace(',', ''))):,}원"
+    except Exception:
+        return str(v or "")
 
 
 def check(state, find_keywords, snippet, log):
@@ -142,38 +152,54 @@ def check(state, find_keywords, snippet, log):
         return hits, checked, notes
 
     for label, path in APIS.items():
-        if not path:
-            continue
-        log(f"[온비드 {label}] 물건목록 조회")
+        found = {}
         try:
-            rows = fetch_all(key, path, log)
-        except Exception as e:
-            notes.append(f"온비드 {label} 조회 오류: {str(e)[:70]}")
+            # 1) 물건명 검색 (키워드별)
+            for kw in [k for k in os.getenv("KEYWORDS", "공제조합").split(",") if k.strip()]:
+                rows, calls = fetch(key, path, log, {"onbidCltrNm": kw.strip()})
+                log(f"[온비드 {label}] 물건명 '{kw.strip()}' 검색: {len(rows)}건 ({calls}회 호출)")
+                for x in rows:
+                    found[(x.get("cltrMngNo"), x.get("pbctCdtnNo"))] = x
+            # 2) 전체 목록 확인
+            if label in FULL_SCAN:
+                rows, calls = fetch(key, path, log)
+                log(f"[온비드 {label}] 전체 목록: {len(rows):,}건 ({calls}회 호출)")
+                checked += len(rows)
+                for x in rows:
+                    found.setdefault((x.get("cltrMngNo"), x.get("pbctCdtnNo")), x)
+        except OnbidError as e:
+            notes.append(f"온비드 {label} 조회 오류: {str(e)[:60]}")
             log(f"[온비드 {label}] 오류:", e)
-            continue
-        checked += len(rows)
-        for x in rows:
+            if not found:
+                continue
+        if label not in FULL_SCAN:
+            checked += len(found)
+
+        for (mng, cdtn), x in found.items():
             text = " ".join(str(v) for v in x.values() if isinstance(v, (str, int, float)))
             kw = find_keywords(text)
             if not kw:
                 continue
-            k = f"{x.get('cltrMngNo')}|{x.get('pbctCdtnNo', '')}"
+            k = f"{mng}|{cdtn}"
             if k in alerted:
                 continue
             alerted.add(k)
-            nm = name_of(x)
+            nm = str(x.get("onbidCltrNm") or "")
+            usbd = x.get("usbdNft")
             hits.append({
                 "source": f"온비드 {label}",
                 "url": ONBID_HOME,
                 "button": "온비드 열기",
                 "lines": [
-                    f"[{x.get('_prpt', '')}] {x.get('orgNm', '') or x.get('pbancOrgNm', '')}".strip(),
+                    f"[{x.get('prptDivNm', '')}] {x.get('orgNm', '')}".strip(),
                     f"물건: {nm[:70]}" if nm else "",
-                    f"물건관리번호: {x.get('cltrMngNo')}",
+                    f"온비드물건번호 {x.get('onbidCltrno', '')} / 관리번호 {mng}",
+                    f"감정 {_won(x.get('apslEvlAmt'))} → 최저 {_won(x.get('lowstBidPrcIndctCont'))}"
+                    + (f" / 유찰 {usbd}회" if usbd not in (None, "") else ""),
                     _bid_period(x),
-                    snippet(text, kw[0]) if not (nm and kw[0] in re.sub(r'\s', '', nm)) else "",
+                    snippet(text, kw[0]) if kw[0] not in re.sub(r"\s", "", nm) else "",
                 ],
             })
-            log("  ★ 온비드 키워드 발견:", x.get("cltrMngNo"), nm)
+            log("  ★ 온비드 키워드 발견:", mng, nm)
     st["alerted"] = list(alerted)[-3000:]
     return hits, checked, notes
