@@ -36,6 +36,19 @@ PRPT_CODES = {
 }
 ALL_PRPT = ",".join(PRPT_CODES)
 ONBID_HOME = "https://www.onbid.co.kr"
+DETAIL_URL = ("https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do"
+              "?cltrScrnGrpCd={grp}&cltrPrptDivCd={prpt}&onbidCltrno={cltr}&onbidPbancNo={pbanc}"
+              "&pbctNo={pbct}&pbctCdtnNo={cdtn}")
+SCREEN_GROUP = {"부동산": "0001", "동산": "0003"}   # 물건유형코드
+
+
+def detail_url(label, x):
+    """온비드 물건 상세화면 주소 (필요한 번호가 없으면 첫 화면)"""
+    vals = dict(cltr=x.get("onbidCltrno"), pbanc=x.get("onbidPbancNo"), pbct=x.get("pbctNo"),
+                cdtn=x.get("pbctCdtnNo"), prpt=x.get("prptDivCd"))
+    if not all(vals.values()):
+        return ONBID_HOME
+    return DETAIL_URL.format(grp=SCREEN_GROUP.get(label, "0001"), **vals)
 PAGE = int(os.getenv("ONBID_PAGE_SIZE", "500"))
 MAX_PAGES = 60          # 안전장치 (500건 × 60페이지 = 3만건)
 
@@ -188,8 +201,8 @@ def check(state, find_keywords, snippet, log):
             usbd = x.get("usbdNft")
             hits.append({
                 "source": f"온비드 {label}",
-                "url": ONBID_HOME,
-                "button": "온비드 열기",
+                "url": detail_url(label, x),
+                "button": "물건 상세보기",
                 "lines": [
                     f"[{x.get('prptDivNm', '')}] {x.get('orgNm', '')}".strip(),
                     f"물건: {nm[:70]}" if nm else "",

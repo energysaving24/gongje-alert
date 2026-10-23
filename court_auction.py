@@ -18,6 +18,7 @@ BASE = "https://www.courtauction.go.kr"
 NOTICE_PAGE = BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ143M01.xml&pgjId=143M01"
 LIST_API = BASE + "/pgj/pgj143/selectRletDspslPbanc.on"
 DETAIL_API = BASE + "/pgj/pgj143/selectRletDspslPbancDtl.on"
+CASE_PAGE = BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ159M00.xml&pgjId=159M00"   # 경매사건검색
 KST = timezone(timedelta(hours=9))
 
 
@@ -165,11 +166,12 @@ def check(state, find_keywords, snippet, log, max_details=60, min_round=2):
                     price = f"감정 {aee:,} → 최저 {lws:,}원 ({lws * 100 // aee}%)" if aee and lws else ""
                     hits.append({
                         "source": "법원경매",
-                        "url": NOTICE_PAGE,
-                        "button": "법원경매정보",
+                        "url": CASE_PAGE,
+                        "button": "경매사건검색",
                         "lines": [
                             f"{court} {strip(r.get('cortAuctnJdbnNm'))}",
-                            f"사건: {cs} / 매각기일 {sale[:4]}.{sale[4:6]}.{sale[6:8]}",
+                            f"▶사건번호 {cs} (사건검색에 입력)",
+                            f"매각기일 {sale[:4]}.{sale[4:6]}.{sale[6:8]}",
                             f"{strip(it.get('usgNm'))} {strip(it.get('st'))[:50]}",
                             (f"{rnd}회차 이상 입찰 / " if rnd else "") + price,
                             snippet(text, kw[0]),

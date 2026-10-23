@@ -6,13 +6,26 @@
   3) 온비드 공매 물건 (onbid.py)
 
 - 게시판: https://www.scourt.go.kr/portal/notice/realestate/RealNoticeList.work
-- 새 공고(이전 실행 이후 올라온 글)만 검사
+- 새 공고(이전 실행 이후 올라온 글) + 지난번에 확인 못 한 공고(재확인 대기)를 검사
 - 검색 범위: 제목 · 매각기관 · 상세 본문 · 첨부파일(PDF/HWP/HWPX/DOCX/XLSX/ZIP) 내용
 - 결과: 있으면 공고별 링크 전송, 없으면 '해당 없음' 결과 통지
+
+[2026-10-23 수정 2]
+- 회생파산: 제목에 부동산·특허·차량·비품·재고·회원권 등 제외어가 있으면 첨부파일을 열지 않음
+- 회생파산: 그 외 공고는 제목 + 첨부파일에서 '공제조합·주식·출자증권·지분반환채권' 검색
+  ('주식회사'는 '주식'으로 치지 않음)
+
+[2026-10-23 수정]
+- 대법원 서버 연결 끊김 대응: 공고 간 대기 8~13초(무작위), 재시도 4회·간격 20/45/90초
+- 브라우저를 실행 전체에서 1개만 띄워 재사용 (공고마다 새로 띄우지 않음)
+- 첨부 다운로드 대기 90초 → 30초, 실패 시 1회 재클릭 + 쿠키를 넘겨 직접 요청으로 대체 다운로드
+- 상세페이지/첨부를 못 받은 공고는 '재확인 대기'에 넣어 다음 실행에서 최대 3회까지 다시 검사
+- 같은 공고 중복 알림 방지
 """
 import io
 import json
 import os
+import random
 import re
 import sys
 import time
@@ -36,12 +49,26 @@ MAX_PAGES = int(os.getenv("MAX_PAGES", "10"))          # 한 번에 최대 몇 �
 INITIAL_DAYS = int(os.getenv("INITIAL_DAYS", "1"))      # 최초 실행 시 며칠치 공고를 볼지
 STATE_FILE = Path(os.getenv("STATE_FILE", "state/seen.json"))
 DRY_RUN = os.getenv("DRY_RUN", "0") == "1"              # 1이면 카톡 안 보내고 화면 출력만
+SCOURT_DELAY = float(os.getenv("SCOURT_DELAY", "8"))    # 공고 사이 기본 대기(초)
+MAX_RETRY = int(os.getenv("SCOURT_MAX_RETRY", "3"))     # 확인 못 한 공고를 몇 번의 실행까지 다시 볼지
+DL_TIMEOUT_MS = int(os.getenv("DL_TIMEOUT_MS", "30000"))
+
+# 회생파산 자산매각 공고 전용 검색어 (제목 + 첨부파일에서 찾음)
+SCOURT_KEYWORDS = [k.strip() for k in os.getenv(
+    "SCOURT_KEYWORDS", "공제조합,주식,출자증권,지분반환채권").split(",") if k.strip()]
+# 제목에 아래 단어가 있으면 공제조합과 무관한 매각 → 첨부파일을 열지 않고 건너뜀
+SCOURT_EXCLUDE = [k.strip() for k in os.getenv(
+    "SCOURT_EXCLUDE",
+    "부동산,특허,디자인,상표,차량,자동차,지게차,지식재산권,기계장치,설비,상표권,비품,원재료,"
+    "공구,기구,시설장치,재고,회원권,물품대금,공사대금").split(",") if k.strip()]
 
 KST = timezone(timedelta(hours=9))
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/126.0 Safari/537.36",
     "Accept-Language": "ko-KR,ko;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Referer": LIST_URL,
 }
 
 session = requests.Session()
@@ -52,16 +79,26 @@ def log(*a):
     print(datetime.now(KST).strftime("[%H:%M:%S]"), *a, flush=True)
 
 
+def polite_sleep(base=None):
+    """서버가 연결을 끊지 않도록 사람처럼 불규칙하게 쉬기"""
+    b = SCOURT_DELAY if base is None else base
+    time.sleep(random.uniform(b, b * 1.6))
+
+
+BACKOFF = [20, 45, 90]
+
+
 def get_html(url, **kw):
-    for i in range(3):
+    for i in range(len(BACKOFF) + 1):
         try:
             r = session.get(url, timeout=30, **kw)
             r.raise_for_status()
             r.encoding = "cp949"   # 사이트가 euc-kr
             return r.text
         except Exception as e:
-            log(f"요청 실패({i+1}/3): {url} - {e}")
-            time.sleep(15 * (i + 1))   # 사이트가 연결을 끊으면 잠시 쉬었다가 재시도
+            log(f"요청 실패({i+1}/{len(BACKOFF)+1}): {url} - {str(e)[:90]}")
+            if i < len(BACKOFF):
+                time.sleep(BACKOFF[i] + random.uniform(0, 10))
     raise RuntimeError(f"페이지를 가져오지 못했습니다: {url}")
 
 
@@ -88,6 +125,33 @@ def snippet(text, kw, width=40):
         idx = m.start()
     s = flat[max(0, idx - width): idx + len(kw) + width].strip()
     return "…" + s + "…"
+
+
+def _kw_pattern(k):
+    """띄어쓰기가 섞여도 찾도록 글자 사이 공백 허용. '주식'은 '주식회사'를 제외"""
+    pat = r"\s*".join(map(re.escape, k))
+    if k == "주식":
+        pat += r"(?!\s*회\s*사)"
+    return re.compile(pat)
+
+
+SCOURT_PATTERNS = [(k, _kw_pattern(k)) for k in SCOURT_KEYWORDS]
+
+
+def scourt_find(text):
+    """회생파산 공고용 검색 → [(키워드, 주변문장)]"""
+    flat = re.sub(r"\s+", " ", text or "")
+    out = []
+    for k, pat in SCOURT_PATTERNS:
+        m = pat.search(flat)
+        if m:
+            out.append((k, "…" + flat[max(0, m.start() - 35): m.end() + 35].strip() + "…"))
+    return out
+
+
+def excluded_title(title):
+    t = norm(title)
+    return [w for w in SCOURT_EXCLUDE if norm(w) in t]
 
 
 # ───────────────────────── 상태 저장 ─────────────────────────
@@ -163,16 +227,117 @@ def written_date(info):
     return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), tzinfo=KST).date()
 
 
+# ───────────────────────── 브라우저 (실행 전체에서 1개 재사용) ─────────────────────────
+STATIC_EXT = (".js", ".css", ".png", ".gif", ".jpg", ".jpeg", ".ico", ".svg", ".woff", ".woff2", ".ttf")
+
+
+def _looks_like_file(body):
+    return bool(body) and b"<html" not in body[:500].lower() and b"<!doctype" not in body[:500].lower()
+
+
+class Browser:
+    def __init__(self):
+        self._pw = self._browser = self.ctx = None
+        self.captured = []   # 파일처럼 보이는 응답
+        self.requests = []   # 클릭 후 발생한 요청 (대체 다운로드용)
+
+    def context(self):
+        if self.ctx is None:
+            from playwright.sync_api import sync_playwright
+            self._pw = sync_playwright().start()
+            self._browser = self._pw.chromium.launch()
+            self.ctx = self._browser.new_context(accept_downloads=True, user_agent=HEADERS["User-Agent"],
+                                                 locale="ko-KR")
+            self.ctx.on("response", self._on_response)
+            self.ctx.on("request", self._on_request)
+        return self.ctx
+
+    def _on_response(self, resp):
+        try:
+            ct = (resp.headers.get("content-type") or "").lower()
+            cd = (resp.headers.get("content-disposition") or "").lower()
+            if "attachment" in cd or ("text/html" not in ct and ct and
+                                      any(x in ct for x in ("pdf", "octet", "hwp", "zip", "msword", "officedocument"))):
+                self.captured.append(resp)
+        except Exception:
+            pass
+
+    def _on_request(self, req):
+        try:
+            u = req.url
+            if u.startswith("http") and not u.split("?")[0].lower().endswith(STATIC_EXT) \
+                    and req.resource_type in ("document", "other", "xhr", "fetch"):
+                self.requests.append({"method": req.method, "url": u, "data": req.post_data,
+                                      "ctype": req.headers.get("content-type")})
+        except Exception:
+            pass
+
+    def reset_capture(self):
+        self.captured.clear()
+        self.requests.clear()
+
+    def captured_body(self):
+        for resp in self.captured:
+            try:
+                body = resp.body()
+                if _looks_like_file(body):
+                    return body
+            except Exception:
+                pass
+        return None
+
+    def replay_requests(self, page_url):
+        """다운로드 이벤트가 안 왔을 때: 클릭이 만든 요청을 브라우저 쿠키로 직접 다시 보내기"""
+        if not self.requests:
+            return None
+        try:
+            for c in self.ctx.cookies():
+                session.cookies.set(c["name"], c["value"], domain=c.get("domain"), path=c.get("path", "/"))
+        except Exception:
+            pass
+        for rq in list(self.requests):
+            if rq["url"] == page_url:
+                continue
+            for i in range(3):
+                try:
+                    h = {"Referer": page_url}
+                    if rq["ctype"]:
+                        h["Content-Type"] = rq["ctype"]
+                    r = session.request(rq["method"], rq["url"], data=rq["data"], headers=h, timeout=60)
+                    if r.ok and _looks_like_file(r.content):
+                        return r.content
+                    break   # 파일이 아닌 응답이면 다른 요청 시도
+                except Exception as e:
+                    log(f"   대체 다운로드 실패({i+1}/3): {str(e)[:70]}")
+                    time.sleep(15 * (i + 1) + random.uniform(0, 5))
+        return None
+
+    def close_popups(self):
+        if self.ctx:
+            for pg in self.ctx.pages:
+                try:
+                    pg.close()
+                except Exception:
+                    pass
+
+    def close(self):
+        try:
+            if self._browser:
+                self._browser.close()
+            if self._pw:
+                self._pw.stop()
+        except Exception:
+            pass
+
+
 # ───────────────────────── 첨부파일 다운로드 ─────────────────────────
-def download_attachments(page_url, attach_links, failed=None):
+def download_attachments(page_url, attach_links, failed, br):
     """
     첨부파일 링크는 자바스크립트 함수로 되어 있는 경우가 많아
     실제 브라우저(Playwright)로 클릭해서 다운로드를 받는다.
-    반환: [(파일명, bytes)]
+    반환: [(파일명, bytes)] / 받지 못한 파일명은 failed 에 추가
     """
     files = []
-    if failed is None:
-        failed = []
     if not attach_links:
         return files
 
@@ -183,7 +348,7 @@ def download_attachments(page_url, attach_links, failed=None):
         if href and not href.startswith("javascript") and href != "#":
             try:
                 r = session.get(urljoin(page_url, href), timeout=60, headers={"Referer": page_url})
-                if r.ok and r.content and b"<html" not in r.content[:500].lower():
+                if r.ok and _looks_like_file(r.content):
                     files.append((link["name"], r.content))
                     continue
             except Exception as e:
@@ -195,81 +360,73 @@ def download_attachments(page_url, attach_links, failed=None):
 
     # 2) 자바스크립트 링크 → 브라우저로 클릭
     try:
-        from playwright.sync_api import sync_playwright
+        ctx = br.context()
     except ImportError:
         log("playwright 미설치 - 첨부파일 검색 생략")
+        failed.extend(l["name"] for l in remaining)
         return files
 
+    page = None
     try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch()
-            ctx = browser.new_context(accept_downloads=True, user_agent=HEADERS["User-Agent"], locale="ko-KR")
-            # 다운로드 이벤트 대신 파일 응답(PDF 등)이 바로 오는 경우도 잡기
-            captured = []
-
-            def on_response(resp):
+        page = ctx.new_page()
+        for i in range(3):
+            try:
+                page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+                break
+            except Exception as e:
+                log(f"  브라우저 접속 실패({i+1}/3): {str(e)[:80]}")
+                if i == 2:
+                    raise
+                time.sleep(BACKOFF[i] + random.uniform(0, 10))
+        anchors = page.locator("xpath=//th[contains(normalize-space(.),'첨부')]/following-sibling::td[1]//a")
+        n = anchors.count()
+        for i in range(n):
+            a = anchors.nth(i)
+            name = (a.inner_text() or f"첨부{i+1}").strip()
+            if any(name == f[0] for f in files):
+                continue
+            got, how, err = None, "", ""
+            for attempt in range(2):
+                br.reset_capture()
                 try:
-                    ct = (resp.headers.get("content-type") or "").lower()
-                    cd = (resp.headers.get("content-disposition") or "").lower()
-                    if "attachment" in cd or ("text/html" not in ct and ct and
-                                              any(x in ct for x in ("pdf", "octet", "hwp", "zip", "msword", "officedocument"))):
-                        captured.append(resp)
-                except Exception:
-                    pass
-            ctx.on("response", on_response)
-
-            page = ctx.new_page()
-            for i in range(3):
-                try:
-                    page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
-                    break
-                except Exception as e:
-                    log(f"  브라우저 접속 실패({i+1}/3): {str(e)[:80]}")
-                    if i == 2:
-                        raise
-                    time.sleep(15 * (i + 1))
-            anchors = page.locator("xpath=//th[contains(normalize-space(.),'첨부')]/following-sibling::td[1]//a")
-            n = anchors.count()
-            for i in range(n):
-                a = anchors.nth(i)
-                name = (a.inner_text() or f"첨부{i+1}").strip()
-                if any(name == f[0] for f in files):
-                    continue
-                captured.clear()
-                try:
-                    with page.expect_download(timeout=90000) as dl_info:
+                    with page.expect_download(timeout=DL_TIMEOUT_MS) as dl_info:
                         a.click()
                     dl = dl_info.value
-                    data = Path(dl.path()).read_bytes()
-                    files.append((name or dl.suggested_filename, data))
-                    log(f"  첨부 다운로드: {name} ({len(data):,} bytes)")
+                    got = Path(dl.path()).read_bytes()
+                    name = name or dl.suggested_filename
+                    how = ""
                 except Exception as e:
-                    got = None
-                    for resp in captured:
-                        try:
-                            body = resp.body()
-                            if body and b"<html" not in body[:500].lower():
-                                got = body
-                                break
-                        except Exception:
-                            pass
-                    if got:
-                        files.append((name, got))
-                        log(f"  첨부 다운로드(응답 캡처): {name} ({len(got):,} bytes)")
-                    else:
-                        log(f"  첨부 다운로드 실패: {name} - {str(e)[:80]}")
-                        failed.append(name)
-                    # 열린 팝업 창 정리
-                    for pg in ctx.pages[1:]:
+                    err = str(e)[:80]
+                    got = br.captured_body()
+                    how = "응답 캡처"
+                    if not got:
+                        got = br.replay_requests(page_url)
+                        how = "직접 요청"
+                # 팝업 창 정리 (본 페이지는 유지)
+                for pg in ctx.pages:
+                    if pg != page:
                         try:
                             pg.close()
                         except Exception:
                             pass
-                time.sleep(2)
-            browser.close()
+                if got:
+                    break
+                if attempt == 0:
+                    log(f"  첨부 다운로드 재시도: {name}")
+                    time.sleep(15 + random.uniform(0, 10))
+            if got:
+                files.append((name, got))
+                log(f"  첨부 다운로드{f'({how})' if how else ''}: {name} ({len(got):,} bytes)")
+            else:
+                log(f"  첨부 다운로드 실패: {name} - {err}")
+                failed.append(name)
+            time.sleep(random.uniform(3, 6))
     except Exception as e:
         log(f"  첨부파일 확인 오류: {str(e)[:120]}")
-        failed.extend(l["name"] for l in remaining if not any(l["name"] == f[0] for f in files))
+        failed.extend(l["name"] for l in remaining
+                      if not any(l["name"] == f[0] for f in files) and l["name"] not in failed)
+    finally:
+        br.close_popups()
     return files
 
 
@@ -466,7 +623,7 @@ def collect_new_posts(state):
             break
         if max_seq == 0 and page >= 3:  # 최초 실행은 날짜로 거르므로 3페이지면 충분
             break
-        time.sleep(1)
+        polite_sleep(3)
     return new
 
 
@@ -474,66 +631,105 @@ def check_scourt(state):
     """대법원 회생·파산 자산매각 공고 → (hits, checked, notes)"""
     today = datetime.now(KST)
     first_run = state.get("max_seq", 0) == 0
+    state.pop("scourt_unchecked", None)                 # 예전 방식 기록 정리
+    retry = {str(k): int(v) for k, v in state.get("scourt_retry", {}).items()}
+    alerted = set(state.get("scourt_alerted", []))
+
     posts = collect_new_posts(state)
-    log(f"[회생파산] 새 공고 {len(posts)}건")
-    hits, checked, unreadable, fail_urls, page_fail = [], 0, [], [], []
+    new_seqs = {p["seq"] for p in posts}
+    targets = list(posts) + [{"seq": int(s), "title": "", "court": "", "org": "", "retry": True}
+                             for s in retry if int(s) not in new_seqs]
+    log(f"[회생파산] 새 공고 {len(posts)}건 + 재확인 대기 {len(targets) - len(posts)}건")
+
+    hits, checked, unreadable, skipped = [], 0, [], 0
+    next_retry, gave_up = {}, []
     cutoff = (today - timedelta(days=INITIAL_DAYS)).date()
 
-    for it in sorted(posts, key=lambda x: x["seq"]):
-        url = VIEW_URL.format(seq=it["seq"])
-        try:
-            info, body, links = parse_view(get_html(url), url)
-        except Exception as e:
-            log("상세 페이지 오류:", url, e)
-            page_fail.append(it["seq"])
-            continue
-        wdate = written_date(info)
-        if first_run and wdate and wdate < cutoff:
-            continue
-        checked += 1
-        title = info.get("제목", it["title"])
-        org = info.get("매각기관", it["org"])
-        court = info.get("관할법원", it["court"])
-        log(f"[{it['seq']}] {court} | {org} | {title}")
+    def mark_retry(seq, label):
+        tried = retry.get(str(seq), 0) + 1
+        if tried < MAX_RETRY:
+            next_retry[str(seq)] = tried
+            log(f"  → 다음 실행에서 재확인 ({tried}/{MAX_RETRY})")
+        else:
+            gave_up.append(label)
+            log(f"  → {MAX_RETRY}회 실패, 직접 확인 필요")
 
-        where, snip = [], ""
-        kw = find_keywords(" ".join([title, org, body]))
-        if kw:
-            where.append("공고 본문")
-            snip = snippet(" ".join([title, org, body]), kw[0])
+    br = Browser()
+    try:
+        for it in sorted(targets, key=lambda x: x["seq"]):
+            seq = it["seq"]
+            url = VIEW_URL.format(seq=seq)
+            try:
+                info, body, links = parse_view(get_html(url), url)
+            except Exception as e:
+                log("상세 페이지 오류:", url, e)
+                mark_retry(seq, f"공고 {seq}")
+                polite_sleep()
+                continue
+            wdate = written_date(info)
+            if first_run and wdate and wdate < cutoff:
+                continue
+            checked += 1
+            title = info.get("제목", it["title"])
+            org = info.get("매각기관", it["org"])
+            court = info.get("관할법원", it["court"])
+            tag = f" (재확인 {retry.get(str(seq), 0) + 1}회차)" if it.get("retry") else ""
+            log(f"[{seq}]{tag} {court} | {org} | {title}")
 
-        failed = []
-        for fname, data in download_attachments(url, links, failed):
-            text, memo = extract_text(fname, data)
-            if memo:
-                unreadable.append(f"{title[:15]}…/{fname}({memo})")
-            k2 = find_keywords(text)
-            if k2:
-                where.append(f"첨부:{fname}")
-                snip = snip or snippet(text, k2[0])
+            ex = excluded_title(title)
+            if ex:
+                skipped += 1
+                log(f"  - 제외어 '{ex[0]}' 포함 → 첨부 검색 생략")
+                polite_sleep(2)
+                continue
 
-        for fname in failed:
-            unreadable.append(f"{title[:15]}…/{fname}(다운로드 실패)")
-            fail_urls.append(url)
+            where, snips, kws = [], [], []
+            for k, sn in scourt_find(title):
+                kws.append(k)
+                snips.append(sn)
+                if "제목" not in where:
+                    where.append("제목")
 
-        if where:
-            hits.append({"source": "회생파산 자산매각", "url": url, "button": "공고 보기", "lines": [
-                f"{court} / {info.get('작성일', '')}", org, f"제목: {title}",
-                f"위치: {', '.join(where)}", snip]})
-            log("  ★ 키워드 발견:", where)
-        time.sleep(3)
+            failed = []
+            for fname, data in download_attachments(url, links, failed, br):
+                text, memo = extract_text(fname, data)
+                if memo:
+                    unreadable.append(f"{title[:15]}…/{fname}({memo})")
+                found = scourt_find(text)
+                if found:
+                    where.append(f"첨부:{fname}")
+                    for k, sn in found:
+                        if k not in kws:
+                            kws.append(k)
+                            snips.append(sn)
+
+            if failed:
+                mark_retry(seq, f"{title[:15]}…")
+
+            if where and seq not in alerted:
+                alerted.add(seq)
+                hits.append({"source": "회생파산 자산매각", "url": url, "button": "공고 보기", "lines": [
+                    f"{court} / {info.get('작성일', '')}", org, f"제목: {title}",
+                    f"발견: {', '.join(kws)}", f"위치: {', '.join(where)}"[:80], snips[0] if snips else ""]})
+                log("  ★ 키워드 발견:", where)
+            polite_sleep()
+    finally:
+        br.close()
 
     if posts:
-        done = [p["seq"] for p in posts if p["seq"] not in page_fail]
-        if page_fail:   # 못 연 공고는 다음 실행에서 다시 보도록 그 앞까지만 기록
-            new_max = min(page_fail) - 1
-        else:
-            new_max = max(done)
-        state["max_seq"] = max(state.get("max_seq", 0), new_max)
+        state["max_seq"] = max(state.get("max_seq", 0), max(new_seqs))
+    state["scourt_retry"] = next_retry
+    state["scourt_alerted"] = sorted(alerted)[-300:]
+
     notes = []
+    if skipped:
+        notes.append(f"회생파산 {skipped}건은 제목(부동산·차량 등)으로 제외")
+    if next_retry:
+        notes.append(f"회생파산 {len(next_retry)}건 서버 오류로 다음 실행에서 재확인")
+    if gave_up:
+        notes.append(f"회생파산 {len(gave_up)}건 {MAX_RETRY}회 실패 - 직접 확인 필요")
     if unreadable:
-        notes.append(f"회생파산 첨부 {len(unreadable)}건 확인 불가(스캔본·다운로드 실패) - 직접 확인 필요")
-        state["scourt_unchecked"] = (state.get("scourt_unchecked", []) + sorted(set(fail_urls)))[-50:]
+        notes.append(f"회생파산 첨부 {len(unreadable)}건 스캔본 등 읽기 불가 - 직접 확인 필요")
     return hits, checked, notes
 
 
