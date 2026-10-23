@@ -73,13 +73,23 @@ def _total(j):
 def fetch_all(key, path, log):
     """한 API의 (재산유형 × 수의계약여부) 전체 페이지 수집"""
     out, calls = [], 0
+    shown_sample = [False]
+    shown03 = [False]
     for prpt in PRPT_CODES:
         for pvct in ("N", "Y"):
             page = 1
             while True:
                 params = {"serviceKey": key, "pageNo": page, "numOfRows": PAGE, "resultType": "json",
                           "prptDivCd": prpt, "pvctTrgtYn": pvct}
-                r = requests.get(BASE + path, params=params, timeout=60)
+                for t in range(3):
+                    try:
+                        r = requests.get(BASE + path, params=params, timeout=90)
+                        break
+                    except requests.exceptions.RequestException as e:
+                        if t == 2:
+                            raise
+                        log(f"   재시도({t+1}/3): {str(e)[:60]}")
+                        time.sleep(10)
                 calls += 1
                 time.sleep(0.5)
                 try:
@@ -87,11 +97,17 @@ def fetch_all(key, path, log):
                 except Exception:
                     raise RuntimeError(f"응답 해석 실패(HTTP {r.status_code}): {r.text[:120]}")
                 code = _result_code(j)
+                if code == "03" and not shown03[0]:
+                    shown03[0] = True
+                    log(f"   [진단] 03(자료없음) 응답 예: prptDivCd={prpt} pvct={pvct}: {r.text[:200]}")
                 if code == "03":           # 해당 조건 물건 없음
                     break
                 if code not in (None, "00"):
                     raise RuntimeError(f"API 오류 코드 {code}: {str(j)[:120]}")
                 rows = _items(j)
+                if not rows and not shown_sample[0]:
+                    shown_sample[0] = True
+                    log(f"   [진단] 물건 0건 응답 prptDivCd={prpt} pvct={pvct} 결과코드={code}: {r.text[:300]}")
                 for x in rows:
                     x["_prpt"] = PRPT_CODES[prpt]
                 out += rows

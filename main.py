@@ -61,7 +61,7 @@ def get_html(url, **kw):
             return r.text
         except Exception as e:
             log(f"요청 실패({i+1}/3): {url} - {e}")
-            time.sleep(3)
+            time.sleep(15 * (i + 1))   # 사이트가 연결을 끊으면 잠시 쉬었다가 재시도
     raise RuntimeError(f"페이지를 가져오지 못했습니다: {url}")
 
 
@@ -164,13 +164,15 @@ def written_date(info):
 
 
 # ───────────────────────── 첨부파일 다운로드 ─────────────────────────
-def download_attachments(page_url, attach_links):
+def download_attachments(page_url, attach_links, failed=None):
     """
     첨부파일 링크는 자바스크립트 함수로 되어 있는 경우가 많아
     실제 브라우저(Playwright)로 클릭해서 다운로드를 받는다.
     반환: [(파일명, bytes)]
     """
     files = []
+    if failed is None:
+        failed = []
     if not attach_links:
         return files
 
@@ -198,29 +200,76 @@ def download_attachments(page_url, attach_links):
         log("playwright 미설치 - 첨부파일 검색 생략")
         return files
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        ctx = browser.new_context(accept_downloads=True, user_agent=HEADERS["User-Agent"], locale="ko-KR")
-        page = ctx.new_page()
-        page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
-        anchors = page.locator("xpath=//th[contains(normalize-space(.),'첨부')]/following-sibling::td[1]//a")
-        n = anchors.count()
-        for i in range(n):
-            a = anchors.nth(i)
-            name = (a.inner_text() or f"첨부{i+1}").strip()
-            if any(name == f[0] for f in files):
-                continue
-            try:
-                with page.expect_download(timeout=40000) as dl_info:
-                    a.click()
-                dl = dl_info.value
-                path = dl.path()
-                data = Path(path).read_bytes()
-                files.append((dl.suggested_filename or name, data))
-                log(f"  첨부 다운로드: {dl.suggested_filename or name} ({len(data):,} bytes)")
-            except Exception as e:
-                log(f"  첨부 다운로드 실패: {name} - {e}")
-        browser.close()
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            ctx = browser.new_context(accept_downloads=True, user_agent=HEADERS["User-Agent"], locale="ko-KR")
+            # 다운로드 이벤트 대신 파일 응답(PDF 등)이 바로 오는 경우도 잡기
+            captured = []
+
+            def on_response(resp):
+                try:
+                    ct = (resp.headers.get("content-type") or "").lower()
+                    cd = (resp.headers.get("content-disposition") or "").lower()
+                    if "attachment" in cd or ("text/html" not in ct and ct and
+                                              any(x in ct for x in ("pdf", "octet", "hwp", "zip", "msword", "officedocument"))):
+                        captured.append(resp)
+                except Exception:
+                    pass
+            ctx.on("response", on_response)
+
+            page = ctx.new_page()
+            for i in range(3):
+                try:
+                    page.goto(page_url, wait_until="domcontentloaded", timeout=60000)
+                    break
+                except Exception as e:
+                    log(f"  브라우저 접속 실패({i+1}/3): {str(e)[:80]}")
+                    if i == 2:
+                        raise
+                    time.sleep(15 * (i + 1))
+            anchors = page.locator("xpath=//th[contains(normalize-space(.),'첨부')]/following-sibling::td[1]//a")
+            n = anchors.count()
+            for i in range(n):
+                a = anchors.nth(i)
+                name = (a.inner_text() or f"첨부{i+1}").strip()
+                if any(name == f[0] for f in files):
+                    continue
+                captured.clear()
+                try:
+                    with page.expect_download(timeout=90000) as dl_info:
+                        a.click()
+                    dl = dl_info.value
+                    data = Path(dl.path()).read_bytes()
+                    files.append((name or dl.suggested_filename, data))
+                    log(f"  첨부 다운로드: {name} ({len(data):,} bytes)")
+                except Exception as e:
+                    got = None
+                    for resp in captured:
+                        try:
+                            body = resp.body()
+                            if body and b"<html" not in body[:500].lower():
+                                got = body
+                                break
+                        except Exception:
+                            pass
+                    if got:
+                        files.append((name, got))
+                        log(f"  첨부 다운로드(응답 캡처): {name} ({len(got):,} bytes)")
+                    else:
+                        log(f"  첨부 다운로드 실패: {name} - {str(e)[:80]}")
+                        failed.append(name)
+                    # 열린 팝업 창 정리
+                    for pg in ctx.pages[1:]:
+                        try:
+                            pg.close()
+                        except Exception:
+                            pass
+                time.sleep(2)
+            browser.close()
+    except Exception as e:
+        log(f"  첨부파일 확인 오류: {str(e)[:120]}")
+        failed.extend(l["name"] for l in remaining if not any(l["name"] == f[0] for f in files))
     return files
 
 
@@ -427,7 +476,7 @@ def check_scourt(state):
     first_run = state.get("max_seq", 0) == 0
     posts = collect_new_posts(state)
     log(f"[회생파산] 새 공고 {len(posts)}건")
-    hits, checked, unreadable = [], 0, []
+    hits, checked, unreadable, fail_urls, page_fail = [], 0, [], [], []
     cutoff = (today - timedelta(days=INITIAL_DAYS)).date()
 
     for it in sorted(posts, key=lambda x: x["seq"]):
@@ -436,6 +485,7 @@ def check_scourt(state):
             info, body, links = parse_view(get_html(url), url)
         except Exception as e:
             log("상세 페이지 오류:", url, e)
+            page_fail.append(it["seq"])
             continue
         wdate = written_date(info)
         if first_run and wdate and wdate < cutoff:
@@ -452,7 +502,8 @@ def check_scourt(state):
             where.append("공고 본문")
             snip = snippet(" ".join([title, org, body]), kw[0])
 
-        for fname, data in download_attachments(url, links):
+        failed = []
+        for fname, data in download_attachments(url, links, failed):
             text, memo = extract_text(fname, data)
             if memo:
                 unreadable.append(f"{title[:15]}…/{fname}({memo})")
@@ -461,16 +512,28 @@ def check_scourt(state):
                 where.append(f"첨부:{fname}")
                 snip = snip or snippet(text, k2[0])
 
+        for fname in failed:
+            unreadable.append(f"{title[:15]}…/{fname}(다운로드 실패)")
+            fail_urls.append(url)
+
         if where:
             hits.append({"source": "회생파산 자산매각", "url": url, "button": "공고 보기", "lines": [
                 f"{court} / {info.get('작성일', '')}", org, f"제목: {title}",
                 f"위치: {', '.join(where)}", snip]})
             log("  ★ 키워드 발견:", where)
-        time.sleep(1)
+        time.sleep(3)
 
     if posts:
-        state["max_seq"] = max(state.get("max_seq", 0), max(p["seq"] for p in posts))
-    notes = [f"회생파산 첨부 {len(unreadable)}건 글자 인식 불가(스캔본 등) - 직접 확인 필요"] if unreadable else []
+        done = [p["seq"] for p in posts if p["seq"] not in page_fail]
+        if page_fail:   # 못 연 공고는 다음 실행에서 다시 보도록 그 앞까지만 기록
+            new_max = min(page_fail) - 1
+        else:
+            new_max = max(done)
+        state["max_seq"] = max(state.get("max_seq", 0), new_max)
+    notes = []
+    if unreadable:
+        notes.append(f"회생파산 첨부 {len(unreadable)}건 확인 불가(스캔본·다운로드 실패) - 직접 확인 필요")
+        state["scourt_unchecked"] = (state.get("scourt_unchecked", []) + sorted(set(fail_urls)))[-50:]
     return hits, checked, notes
 
 
