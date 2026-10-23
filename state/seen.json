@@ -1,1 +1,30 @@
-{"max_seq": 0, "history": []}
+{
+  "max_seq": 0,
+  "history": [
+    {
+      "run": "2026-10-23 10:55",
+      "summary": [
+        "· 회생파산 자산매각: 공고 0건 확인 / 발견 0건",
+        "· 법원경매: 공고 4건 확인 / 발견 0건",
+        "· 온비드 공매: 물건 0건 확인 / 발견 0건"
+      ],
+      "hits": [],
+      "notes": [
+        "회생파산 자산매각 확인 실패: Page.goto: net::ERR_CONNECTION_RESET at https://www.scourt.g",
+        "온비드 동산 조회 오류: HTTPSConnectionPool(host='apis.data.go.kr', port=443): Read timed out."
+      ]
+    }
+  ],
+  "court_auction": {
+    "seen": [
+      "B000210|20261104|경매10계|None",
+      "B000210|20261028|경매4계|None",
+      "B000210|20261103|경매3계|None",
+      "B000210|20261105|경매7계|None"
+    ],
+    "alerted": []
+  },
+  "onbid": {
+    "alerted": []
+  }
+}
