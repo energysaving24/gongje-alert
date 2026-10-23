@@ -155,7 +155,7 @@ def _won(v):
         return str(v or "")
 
 
-def check(state, find_keywords, snippet, log):
+def check(state, find_keywords, snippet, log, keywords=("공제조합",)):
     st = state.setdefault("onbid", {"alerted": []})
     alerted = set(st["alerted"])
     hits, notes, checked = [], [], 0
@@ -168,7 +168,7 @@ def check(state, find_keywords, snippet, log):
         found = {}
         try:
             # 1) 물건명 검색 (키워드별)
-            for kw in [k for k in os.getenv("KEYWORDS", "공제조합").split(",") if k.strip()]:
+            for kw in keywords:
                 rows, calls = fetch(key, path, log, {"onbidCltrNm": kw.strip()})
                 log(f"[온비드 {label}] 물건명 '{kw.strip()}' 검색: {len(rows)}건 ({calls}회 호출)")
                 for x in rows:
@@ -205,6 +205,7 @@ def check(state, find_keywords, snippet, log):
                 "button": "물건 상세보기",
                 "lines": [
                     f"[{x.get('prptDivNm', '')}] {x.get('orgNm', '')}".strip(),
+                    f"발견: {', '.join(kw)}",
                     f"물건: {nm[:70]}" if nm else "",
                     f"온비드물건번호 {x.get('onbidCltrno', '')} / 관리번호 {mng}",
                     f"감정 {_won(x.get('apslEvlAmt'))} → 최저 {_won(x.get('lowstBidPrcIndctCont'))}"

@@ -41,7 +41,9 @@ import requests
 from bs4 import BeautifulSoup
 
 # ───────────────────────── 설정 ─────────────────────────
-KEYWORDS = [k.strip() for k in os.getenv("KEYWORDS", "공제조합").split(",") if k.strip()]
+# 검색어: 회생파산·법원경매·온비드 공통 (예전 KEYWORDS 설정은 사용하지 않음)
+KEYWORDS = [k.strip() for k in os.getenv(
+    "SEARCH_KEYWORDS", "공제조합,주식,출자증권,지분반환채권").split(",") if k.strip()]
 BASE = "https://www.scourt.go.kr"
 LIST_URL = BASE + "/portal/notice/realestate/RealNoticeList.work"
 VIEW_URL = BASE + "/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id={seq}"
@@ -54,8 +56,7 @@ MAX_RETRY = int(os.getenv("SCOURT_MAX_RETRY", "3"))     # 확인 못 한 공고�
 DL_TIMEOUT_MS = int(os.getenv("DL_TIMEOUT_MS", "30000"))
 
 # 회생파산 자산매각 공고 전용 검색어 (제목 + 첨부파일에서 찾음)
-SCOURT_KEYWORDS = [k.strip() for k in os.getenv(
-    "SCOURT_KEYWORDS", "공제조합,주식,출자증권,지분반환채권").split(",") if k.strip()]
+SCOURT_KEYWORDS = KEYWORDS
 # 제목에 아래 단어가 있으면 공제조합과 무관한 매각 → 첨부파일을 열지 않고 건너뜀
 SCOURT_EXCLUDE = [k.strip() for k in os.getenv(
     "SCOURT_EXCLUDE",
@@ -108,12 +109,15 @@ def norm(s):
 
 
 def find_keywords(text):
-    t = norm(text)
-    return [k for k in KEYWORDS if norm(k) in t]
+    """법원경매·온비드용: 찾은 키워드 목록 ('주식회사'는 '주식'으로 치지 않음)"""
+    return [k for k, _ in scourt_find(text)]
 
 
 def snippet(text, kw, width=40):
     """키워드 주변 문장 일부 (알림 메시지용)"""
+    for k, sn in scourt_find(text):
+        if k == kw:
+            return sn
     flat = re.sub(r"\s+", " ", text or "")
     idx = flat.find(kw)
     if idx < 0:
@@ -754,7 +758,7 @@ def main():
                                                  int(os.getenv("AUCTION_MIN_ROUND", "2")))))
     if "onbid" in SOURCES:
         import onbid
-        jobs.append(("온비드 공매", "물건", lambda: onbid.check(state, find_keywords, snippet, log)))
+        jobs.append(("온비드 공매", "물건", lambda: onbid.check(state, find_keywords, snippet, log, KEYWORDS)))
 
     for label, unit, fn in jobs:
         try:
@@ -767,7 +771,7 @@ def main():
         summary.append(f"· {label}: {unit} {c:,}건 확인 / 발견 {len(h)}건")
 
     # ── 알림 전송 ──
-    kw_label = "·".join(KEYWORDS)
+    kw_label = "공제조합·출자증권 등"
     for h in all_hits:
         body = "\n".join(x for x in h["lines"] if x)
         kakao.send(f"[{h['source']} {kw_label} 발견]\n{body}", h["url"], h.get("button", "보기"))
