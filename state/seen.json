@@ -37,41 +37,30 @@
       "notes": [
         "회생파산 첨부 13건 확인 불가(스캔본·다운로드 실패) - 직접 확인 필요"
       ]
+    },
+    {
+      "run": "2026-10-23 21:45",
+      "summary": [
+        "· 회생파산 자산매각: 공고 0건 확인 / 발견 0건",
+        "· 법원경매: 공고 0건 확인 / 발견 0건",
+        "· 온비드 공매: 물건 0건 확인 / 발견 0건"
+      ],
+      "hits": [],
+      "notes": []
     }
   ],
   "court_auction": {
     "seen": [
-      "B000210|20261028|경매4계|None",
-      "B000210|20261103|경매3계|None",
       "B000210|20261105|경매7계|None",
-      "B000210|20261104|경매10계|None"
+      "B000210|20261103|경매3계|None",
+      "B000210|20261104|경매10계|None",
+      "B000210|20261028|경매4계|None"
     ],
     "alerted": []
   },
   "onbid": {
     "alerted": []
   },
-  "scourt_unchecked": [
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35852",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35854",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35856",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35863",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35865",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35867",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35869",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35874",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35876",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35859",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35861",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35863",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35868",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35871",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35873",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35875",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35877",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35879",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35881",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35883",
-    "https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35885"
-  ]
+  "scourt_retry": {},
+  "scourt_alerted": []
 }
