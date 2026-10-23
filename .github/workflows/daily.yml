@@ -1,4 +1,4 @@
-name: 감시(파산·경매·온비드)
+name:파산·경매·온비드
 
 on:
   schedule:
