@@ -46,7 +46,7 @@ jobs:
           SOURCES: scourt,court_auction,onbid
           AUCTION_MAX_DETAILS: "60"
           AUCTION_MIN_ROUND: "2"      # 법원경매: 2회차 입찰부터 알림 (최초 입찰 제외)
-          KEYWORDS: 공제조합
+          SEARCH_KEYWORDS: 공제조합,주식,출자증권,지분반환채권
           DRY_RUN: ${{ github.event.inputs.mode == 'dry' && '1' || '0' }}
         run: |
           if [ "${{ github.event.inputs.mode }}" = "test-kakao" ]; then
