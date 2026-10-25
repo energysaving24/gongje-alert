@@ -43,7 +43,7 @@ jobs:
           GH_PAT: ${{ secrets.GH_PAT }}
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
           ONBID_MOVABLE_PATH: ${{ vars.ONBID_MOVABLE_PATH }}
-          SOURCES: scourt,court_auction,onbid
+          SOURCES: scourt,onbid          # 법원경매(court_auction)는 해외 서버 접속 차단으로 제외
           AUCTION_MAX_DETAILS: "60"
           AUCTION_MIN_ROUND: "2"      # 법원경매: 2회차 입찰부터 알림 (최초 입찰 제외)
           SEARCH_KEYWORDS: 공제조합,주식,출자증권,지분반환채권
