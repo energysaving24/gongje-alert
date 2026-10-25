@@ -67,15 +67,21 @@
       ],
       "hits": [],
       "notes": []
+    },
+    {
+      "run": "2026-10-25 17:03",
+      "summary": [
+        "🏛 회생파산  공고 0 · 발견 0",
+        "⚖ 법원경매  물건 0 · 발견 0",
+        "🏢 온비드  물건 0 · 발견 0"
+      ],
+      "hits": [],
+      "notes": [
+        "법원경매 확인 오류: 400 Client Error: Bad Request for url: https://www.courtauct"
+      ]
     }
   ],
   "court_auction": {
-    "seen": [
-      "B000210|20261104|경매10계|None",
-      "B000210|20261028|경매4계|None",
-      "B000210|20261105|경매7계|None",
-      "B000210|20261103|경매3계|None"
-    ],
     "alerted": []
   },
   "onbid": {
