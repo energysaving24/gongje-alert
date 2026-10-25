@@ -119,6 +119,13 @@ def bid_round(it):
     return None   # 판단 불가 → 놓치지 않도록 알림 대상에 포함
 
 
+def _man(v):
+    v = int(v or 0)
+    eok, rest = divmod(v, 100_000_000)
+    m = rest // 10_000
+    return (f"{eok}억 " if eok else "") + (f"{m:,}만원" if m else ("원" if eok else f"{v:,}원"))
+
+
 def strip(s):
     return re.sub(r"<[^>]+>", " ", str(s or "")).strip()
 
@@ -168,13 +175,17 @@ def check(state, find_keywords, snippet, log, max_details=60, min_round=2):
                         "source": "법원경매",
                         "url": CASE_PAGE,
                         "button": "경매사건검색",
+                        "kws": kw,
                         "lines": [
-                            f"{court} {strip(r.get('cortAuctnJdbnNm'))}",
-                            f"▶사건번호 {cs} (사건검색에 입력)",
-                            f"매각기일 {sale[:4]}.{sale[4:6]}.{sale[6:8]}",
-                            f"{strip(it.get('usgNm'))} {strip(it.get('st'))[:50]}",
-                            (f"{rnd}회차 이상 입찰 / " if rnd else "") + price,
-                            snippet(text, kw[0]),
+                            f"🔢 사건번호 {cs}",
+                            f"     (사건검색에 입력)",
+                            f"⚖ {court} {strip(r.get('cortAuctnJdbnNm'))}",
+                            f"📅 매각기일 {sale[2:4]}.{sale[4:6]}.{sale[6:8]}",
+                            ("🏠 " + " · ".join(x for x in (strip(it.get('usgNm')), strip(it.get('st'))[:28]) if x)),
+                            f"💰 감정 {_man(aee)}" if aee else "",
+                            f"     → 최저 {_man(lws)} ({lws * 100 // aee}%)" if aee and lws else "",
+                            f"🔁 {rnd}회차 이상 입찰" if rnd and rnd > 1 else "",
+                            f"💬 {snippet(strip(it.get('dspslRmk')) or text, kw[0])[:60]}",
                         ],
                     })
                     log("  ★ 법원경매 키워드 발견:", court, cs)

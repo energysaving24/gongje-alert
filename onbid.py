@@ -145,7 +145,32 @@ def _bid_period(x):
         s = str(s or "")
         return f"{s[:4]}.{s[4:6]}.{s[6:8]} {s[8:10]}:{s[10:12]}" if len(s) >= 12 else s
     b, e = x.get("cltrBidBgngDt"), x.get("cltrBidEndDt")
-    return f"입찰: {fmt(b)} ~ {fmt(e)}" if (b or e) else ""
+    return f"📅 {fmt(b)[2:]}\n     ~ {fmt(e)[2:]}" if (b or e) else ""
+
+
+def _short(s, n):
+    s = re.sub(r"\s+", " ", str(s or "")).strip()
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def _man(v):
+    try:
+        v = int(float(re.sub(r"[^0-9.]", "", str(v)) or 0))
+    except Exception:
+        return str(v or "-")
+    if v <= 0:
+        return "비공개" if v == 0 else "-"
+    eok, rest = divmod(v, 100_000_000)
+    m = rest // 10_000
+    return (f"{eok}억 " if eok else "") + (f"{m:,}만원" if m else ("원" if eok else f"{v:,}원"))
+
+
+def _rate(x):
+    r = x.get("apslPrcCtrsLowstBidRto")
+    try:
+        return f" ({float(r):.0f}%)" if r not in (None, "") else ""
+    except Exception:
+        return ""
 
 
 def _won(v):
@@ -203,15 +228,16 @@ def check(state, find_keywords, snippet, log, keywords=("공제조합",)):
                 "source": f"온비드 {label}",
                 "url": detail_url(label, x),
                 "button": "물건 상세보기",
+                "kws": kw,
                 "lines": [
-                    f"[{x.get('prptDivNm', '')}] {x.get('orgNm', '')}".strip(),
-                    f"발견: {', '.join(kw)}",
-                    f"물건: {nm[:70]}" if nm else "",
-                    f"온비드물건번호 {x.get('onbidCltrno', '')} / 관리번호 {mng}",
-                    f"감정 {_won(x.get('apslEvlAmt'))} → 최저 {_won(x.get('lowstBidPrcIndctCont'))}"
-                    + (f" / 유찰 {usbd}회" if usbd not in (None, "") else ""),
+                    f"📌 {_short(nm, 40)}" if nm else "",
+                    f"💰 감정 {_man(x.get('apslEvlAmt'))}",
+                    f"     → 최저 {_man(x.get('lowstBidPrcIndctCont'))}" + _rate(x),
+                    f"🔁 유찰 {usbd}회" if usbd not in (None, "", 0, "0") else "",
                     _bid_period(x),
-                    snippet(text, kw[0]) if kw[0] not in re.sub(r"\s", "", nm) else "",
+                    f"🏷 {x.get('prptDivNm', '')} · {_short(x.get('orgNm', ''), 20)}",
+                    f"🔢 물건번호 {x.get('onbidCltrno', '')}",
+                    f"💬 {_short(snippet(text, kw[0]), 60)}" if kw[0] not in re.sub(r"\s", "", nm) else "",
                 ],
             })
             log("  ★ 온비드 키워드 발견:", mng, nm)

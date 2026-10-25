@@ -103,6 +103,30 @@ def get_html(url, **kw):
     raise RuntimeError(f"페이지를 가져오지 못했습니다: {url}")
 
 
+def short(s, n):
+    s = re.sub(r"\s+", " ", str(s or "")).strip()
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def man(v):
+    """금액을 '1억 2,300만원' 형태로"""
+    try:
+        v = int(float(re.sub(r"[^0-9.]", "", str(v)) or 0))
+    except Exception:
+        return str(v or "")
+    if v <= 0:
+        return "-"
+    eok, rest = divmod(v, 100_000_000)
+    m = rest // 10_000
+    if eok and m:
+        return f"{eok}억 {m:,}만원"
+    if eok:
+        return f"{eok}억원"
+    if m:
+        return f"{m:,}만원"
+    return f"{v:,}원"
+
+
 def norm(s):
     """공백/줄바꿈 제거 - '공 제 조 합'처럼 띄어 쓴 경우도 잡기 위함"""
     return re.sub(r"\s+", "", s or "")
@@ -594,6 +618,21 @@ class Kakao:
         log("카톡 전송 완료")
 
 
+def send_split(kakao, lines, url, button):
+    """카톡 200자 제한: 줄 단위로 나눠 보내기 (문장 중간에서 끊기지 않게)"""
+    buf = ""
+    for ln in lines:
+        add = (ln if not buf else "\n" + ln)
+        if len(buf) + len(add) > 195 and buf:
+            kakao.send(buf, url, button)
+            time.sleep(1)
+            buf = ln
+        else:
+            buf += add
+    if buf:
+        kakao.send(buf, url, button)
+
+
 def update_github_secret(name, value):
     """GH_PAT 이 있으면 저장소 Secret 을 새 값으로 교체 (리프레시 토큰 자동 연장)"""
     pat, repo = os.getenv("GH_PAT"), os.getenv("GITHUB_REPOSITORY")
@@ -712,9 +751,13 @@ def check_scourt(state):
 
             if where and seq not in alerted:
                 alerted.add(seq)
-                hits.append({"source": "회생파산 자산매각", "url": url, "button": "공고 보기", "lines": [
-                    f"{court} / {info.get('작성일', '')}", org, f"제목: {title}",
-                    f"발견: {', '.join(kws)}", f"위치: {', '.join(where)}"[:80], snips[0] if snips else ""]})
+                where_s = "제목" if where == ["제목"] else ("첨부파일" if "제목" not in where else "제목·첨부")
+                hits.append({"source": "회생파산", "kws": kws, "url": url, "button": "공고 보기", "lines": [
+                    f"📌 {title[:40]}",
+                    "🏛 " + " · ".join(x for x in (court, info.get('작성일', '')) if x),
+                    f"👤 {short(org, 34)}",
+                    f"🔎 {where_s}에서 발견",
+                    f"💬 {short(snips[0], 70)}" if snips else ""]})
                 log("  ★ 키워드 발견:", where)
             polite_sleep()
     finally:
@@ -768,28 +811,29 @@ def main():
             h, c, n = [], 0, [f"{label} 확인 실패: {str(e)[:60]}"]
         all_hits += h
         notes += n
-        summary.append(f"· {label}: {unit} {c:,}건 확인 / 발견 {len(h)}건")
+        icon = {"회생파산 자산매각": "🏛 회생파산", "법원경매": "⚖ 법원경매", "온비드 공매": "🏢 온비드"}.get(label, label)
+        summary.append(f"{icon}  {unit} {c:,} · 발견 {len(h)}")
 
     # ── 알림 전송 ──
-    kw_label = "공제조합·출자증권 등"
+    LINE = "━━━━━━━━━━━━━━"
     for h in all_hits:
         body = "\n".join(x for x in h["lines"] if x)
-        kakao.send(f"[{h['source']} {kw_label} 발견]\n{body}", h["url"], h.get("button", "보기"))
+        head = f"🔔 {'·'.join(h.get('kws', [])) or '키워드'} 발견\n[{h['source']}]"
+        kakao.send(f"{head}\n{LINE}\n{body}", h["url"], h.get("button", "보기"))
         time.sleep(1)
 
-    head = f"[{today.strftime('%m/%d')} {kw_label} 점검 결과]"
-    head += f"\n총 {len(all_hits)}건 발견(위 메시지 참고)" if all_hits else f"\n'{kw_label}' 해당 없음"
-    msg = head + "\n" + "\n".join(summary)
+    msg = [f"📋 {today.strftime('%m/%d')} 점검 결과", LINE]
+    msg.append(f"🔔 총 {len(all_hits)}건 발견 (위 메시지)" if all_hits else "✅ 해당 물건 없음")
+    msg.append("")
+    msg += summary
     if notes:
-        msg += "\n※ " + "\n※ ".join(notes)
-    # 카톡 텍스트는 200자 제한 → 길면 나눠서 전송
-    while msg:
-        kakao.send(msg[:200], LIST_URL, "게시판 보기")
-        msg = msg[200:]
+        msg.append("")
+        msg += [f"⚠ {short(n, 60)}" for n in notes]
+    send_split(kakao, msg, LIST_URL, "게시판 보기")
 
     state.setdefault("history", []).append({
         "run": today.strftime("%Y-%m-%d %H:%M"), "summary": summary,
-        "hits": [h["lines"][:3] for h in all_hits], "notes": notes,
+        "hits": [[h["source"]] + h["lines"][:2] for h in all_hits], "notes": notes,
     })
     save_state(state)
     log("완료")
@@ -797,14 +841,14 @@ def main():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test-kakao":
-        Kakao().send("[테스트] 공제조합 알림(회생파산·법원경매·온비드) 연결 성공", LIST_URL, "게시판 보기")
+        Kakao().send("✅ 연결 성공\n━━━━━━━━━━━━━━\n공제조합·출자증권 알림\n(회생파산·법원경매·온비드)", LIST_URL, "게시판 보기")
         sys.exit(0)
     try:
         main()
     except Exception as e:
         traceback.print_exc()
         try:
-            Kakao().send(f"[공제조합 점검 오류]\n{str(e)[:150]}", LIST_URL, "게시판 보기")
+            Kakao().send(f"❗ 점검 오류\n━━━━━━━━━━━━━━\n{str(e)[:150]}", LIST_URL, "게시판 보기")
         except Exception:
             pass
         sys.exit(1)
