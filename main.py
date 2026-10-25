@@ -629,7 +629,7 @@ def write_report(hits, today):
         return None
     esc = lambda v: str(v or "").replace("|", "/").replace("\n", " ")
     rows = [f"# 📋 {today.strftime('%Y-%m-%d')} 발견 목록 ({len(hits)}건)", "",
-            "할인율 큰(최저가 비율 낮은) 순서입니다.", "",
+            "공제조합·출자증권 물건 먼저, 그 안에서 할인율 큰(최저가 비율 낮은) 순서입니다.", "",
             "| # | 출처 | 물건 | 최저가 | 입찰/매각 | 위치 | 링크 |",
             "|---|---|---|---|---|---|---|"]
     for i, h in enumerate(hits, 1):
@@ -841,8 +841,10 @@ def main():
 
     # ── 알림 전송 ──
     LINE = "━━━━━━━━━━━━━━"
-    # 할인율 큰(최저가 비율 낮은) 순서로
-    all_hits.sort(key=lambda h: (h.get("rate") is None, h.get("rate") or 999))
+    # 정렬: ① 공제조합·출자증권·지분반환채권 물건 먼저(주식만 걸린 건 뒤로) ② 할인율 큰 순
+    PRIORITY = ("공제조합", "출자증권", "지분반환채권")
+    all_hits.sort(key=lambda h: (not any(k in PRIORITY for k in h.get("kws", [])),
+                                 h.get("rate") is None, h.get("rate") or 999))
     report_url = write_report(all_hits, today)
     detail, rest = all_hits[:MAX_DETAIL], all_hits[MAX_DETAIL:]
     for h in detail:
