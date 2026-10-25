@@ -172,6 +172,39 @@ def _bid_period(x):
     return f"📅 {fmt(b)[2:]}\n     ~ {fmt(e)[2:]}" if (b or e) else ""
 
 
+def _num(v):
+    try:
+        return int(float(re.sub(r"[^0-9.]", "", str(v)) or 0))
+    except Exception:
+        return 0
+
+
+_KEY_RE = re.compile(r"[^\s]*(공제조합|출자증권|지분\s*반환\s*채권|주\s*식(?!\s*회\s*사))")
+
+
+def _split_name(nm):
+    """'경기도 … 세무서 내 보관 전문건설공제조합 출자증권 10좌' → ('전문건설공제조합 출자증권 10좌', '경기도 … 세무서')"""
+    nm = re.sub(r"\s+", " ", nm).strip()
+    m = _KEY_RE.search(nm)
+    if not m or m.start() == 0:
+        return _short(nm, 40), ""
+    key = nm[m.start():]
+    place = re.sub(r"\s*(내|에)?\s*(보관|보관중인|보관 중인)?\s*$", "", nm[:m.start()]).strip()
+    # 장소는 '시군구 + 기관명' 정도만
+    parts = place.split(" ")
+    org = next((p for p in reversed(parts) if re.search(r"(세무서|지사|청|본부|공단|시청|구청|군청)$", p)), "")
+    city = " ".join(parts[1:2]) if len(parts) > 1 else ""
+    place = " ".join(x for x in (city, org) if x) or _short(place, 24)
+    return _short(key, 40), place
+
+
+def _bid_short(x):
+    b, e = str(x.get("cltrBidBgngDt") or ""), str(x.get("cltrBidEndDt") or "")
+    if len(b) >= 8 and len(e) >= 8:
+        return f"{b[4:6]}/{b[6:8]}~{e[4:6]}/{e[6:8]}"
+    return ""
+
+
 def _short(s, n):
     s = re.sub(r"\s+", " ", str(s or "")).strip()
     return s if len(s) <= n else s[:n - 1] + "…"
@@ -250,22 +283,32 @@ def check(state, find_keywords, snippet, log, keywords=("공제조합",)):
                 continue
             alerted.add(k)
             nm = str(x.get("onbidCltrNm") or "")
+            key_name, place = _split_name(nm)
+            aee = _num(x.get("apslEvlAmt"))
+            lws = _num(x.get("lowstBidPrcIndctCont"))
+            rate = round(lws * 100 / aee) if aee and lws else None
             usbd = x.get("usbdNft")
             hits.append({
                 "source": f"온비드 {label}",
                 "url": detail_url(label, x),
                 "button": "물건 상세보기",
                 "kws": kw,
+                "title": key_name,
+                "rate": rate,
                 "lines": [
-                    f"📌 {_short(nm, 40)}" if nm else "",
-                    f"💰 감정 {_man(x.get('apslEvlAmt'))}",
-                    f"     → 최저 {_man(x.get('lowstBidPrcIndctCont'))}" + _rate(x),
+                    f"📌 {key_name}",
+                    f"📍 {place}" if place else "",
+                    f"💰 감정 {_man(aee)}",
+                    f"     → 최저 {_man(lws)}" + (f" ({rate}%)" if rate else ""),
                     f"🔁 유찰 {usbd}회" if usbd not in (None, "", 0, "0") else "",
                     _bid_period(x),
-                    f"🏷 {x.get('prptDivNm', '')} · {_short(x.get('orgNm', ''), 20)}",
+                    f"🏷 {x.get('prptDivNm', '')} · {_short(x.get('orgNm', ''), 16)}",
                     f"🔢 물건번호 {x.get('onbidCltrno', '')}",
-                    f"💬 {_short(snippet(text, kw[0]), 60)}" if kw[0] not in re.sub(r"\s", "", nm) else "",
                 ],
+                "short": f"{_short(key_name, 22)} · {_man(lws).replace('만원', '만')}"
+                         + (f"({rate}%)" if rate else ""),
+                "period": _bid_short(x), "place": place,
+                "price": f"{_man(lws)}" + (f" ({rate}%)" if rate else ""),
             })
             log("  ★ 온비드 키워드 발견:", mng, nm)
     st["alerted"] = list(alerted)[-3000:]

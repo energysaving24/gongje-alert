@@ -172,6 +172,11 @@ def check(state, find_keywords, snippet, log, max_details=60, min_round=2, days=
             hits.append({
                 "source": "법원경매",
                 "kws": kw,
+                "title": f"{cs} {_addr(r)[:20]}",
+                "rate": (lws * 100 // aee) if aee and lws else None,
+                "short": f"{cs} · {_man(lws).replace('만원', '만')} 유찰{_num(r.get('yuchalCnt'))}",
+                "period": f"{sale[4:6]}/{sale[6:8]}", "place": _addr(r)[:20],
+                "price": f"{_man(lws)}" + (f" ({lws * 100 // aee}%)" if aee and lws else ""),
                 "url": CASE_PAGE,
                 "button": "경매사건검색",
                 "lines": [

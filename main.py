@@ -618,6 +618,29 @@ class Kakao:
         log("카톡 전송 완료")
 
 
+MAX_DETAIL = int(os.getenv("MAX_DETAIL", "5"))     # 자세히 보낼 건수 (나머지는 요약)
+MAX_DIGEST = int(os.getenv("MAX_DIGEST", "10"))    # 요약 목록에 넣을 최대 건수
+REPORT_FILE = Path("state/report.md")
+
+
+def write_report(hits, today):
+    """발견 목록 전체를 state/report.md 표로 저장 → GitHub 에서 링크로 보기"""
+    if not hits:
+        return None
+    esc = lambda v: str(v or "").replace("|", "/").replace("\n", " ")
+    rows = [f"# 📋 {today.strftime('%Y-%m-%d')} 발견 목록 ({len(hits)}건)", "",
+            "할인율 큰(최저가 비율 낮은) 순서입니다.", "",
+            "| # | 출처 | 물건 | 최저가 | 입찰/매각 | 위치 | 링크 |",
+            "|---|---|---|---|---|---|---|"]
+    for i, h in enumerate(hits, 1):
+        rows.append(f"| {i} | {esc(h['source'])} | {esc(h.get('title'))} | {esc(h.get('price'))} | "
+                    f"{esc(h.get('period'))} | {esc(h.get('place'))} | [{esc(h.get('button', '보기'))}]({h['url']}) |")
+    REPORT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    REPORT_FILE.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    repo = os.getenv("GITHUB_REPOSITORY")
+    return f"https://github.com/{repo}/blob/main/state/report.md" if repo else None
+
+
 def send_split(kakao, lines, url, button):
     """카톡 200자 제한: 줄 단위로 나눠 보내기 (문장 중간에서 끊기지 않게)"""
     buf = ""
@@ -752,7 +775,9 @@ def check_scourt(state):
             if where and seq not in alerted:
                 alerted.add(seq)
                 where_s = "제목" if where == ["제목"] else ("첨부파일" if "제목" not in where else "제목·첨부")
-                hits.append({"source": "회생파산", "kws": kws, "url": url, "button": "공고 보기", "lines": [
+                hits.append({"source": "회생파산", "kws": kws, "url": url, "button": "공고 보기",
+                             "title": title[:40], "short": short(title, 28), "place": court,
+                             "lines": [
                     f"📌 {title[:40]}",
                     "🏛 " + " · ".join(x for x in (court, info.get('작성일', '')) if x),
                     f"👤 {short(org, 34)}",
@@ -816,20 +841,32 @@ def main():
 
     # ── 알림 전송 ──
     LINE = "━━━━━━━━━━━━━━"
-    for h in all_hits:
+    # 할인율 큰(최저가 비율 낮은) 순서로
+    all_hits.sort(key=lambda h: (h.get("rate") is None, h.get("rate") or 999))
+    report_url = write_report(all_hits, today)
+    detail, rest = all_hits[:MAX_DETAIL], all_hits[MAX_DETAIL:]
+    for h in detail:
         body = "\n".join(x for x in h["lines"] if x)
         head = f"🔔 {'·'.join(h.get('kws', [])) or '키워드'} 발견\n[{h['source']}]"
         kakao.send(f"{head}\n{LINE}\n{body}", h["url"], h.get("button", "보기"))
         time.sleep(1)
+    if rest:
+        lines = [f"📚 그 외 {len(rest)}건 (할인율 순)", LINE]
+        for i, h in enumerate(rest[:MAX_DIGEST], 1):
+            lines.append(f"{i}. {h.get('short') or h.get('title', '')}")
+        if len(rest) > MAX_DIGEST:
+            lines.append(f"… 외 {len(rest) - MAX_DIGEST}건은 전체 목록에서 확인")
+        send_split(kakao, lines, report_url or LIST_URL, "전체 목록 보기" if report_url else "게시판 보기")
 
     msg = [f"📋 {today.strftime('%m/%d')} 점검 결과", LINE]
-    msg.append(f"🔔 총 {len(all_hits)}건 발견 (위 메시지)" if all_hits else "✅ 해당 물건 없음")
+    msg.append(f"🔔 총 {len(all_hits)}건 발견" if all_hits else "✅ 해당 물건 없음")
     msg.append("")
     msg += summary
     if notes:
         msg.append("")
         msg += [f"⚠ {short(n, 60)}" for n in notes]
-    send_split(kakao, msg, LIST_URL, "게시판 보기")
+    send_split(kakao, msg, report_url if (all_hits and report_url) else LIST_URL,
+               "전체 목록 보기" if (all_hits and report_url) else "게시판 보기")
 
     state.setdefault("history", []).append({
         "run": today.strftime("%Y-%m-%d %H:%M"), "summary": summary,
