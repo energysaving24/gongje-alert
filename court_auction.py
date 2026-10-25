@@ -84,21 +84,60 @@ class CourtAuction:
             "sc-userid": "SYSTEM",
         })
         self.last = 0
+        self.page = None          # 브라우저 모드일 때 사용
+        self._pw = self._br = None
 
     def warmup(self):
         self.s.get(SEARCH_PAGE, timeout=30)
+
+    def use_browser(self):
+        """requests 요청이 거절될 때: 실제 브라우저로 검색화면을 열고, 그 화면 안에서 검색 요청"""
+        from playwright.sync_api import sync_playwright
+        self._pw = sync_playwright().start()
+        self._br = self._pw.chromium.launch()
+        ctx = self._br.new_context(locale="ko-KR", user_agent=self.s.headers["User-Agent"])
+        self.page = ctx.new_page()
+        self.page.goto(SEARCH_PAGE, wait_until="networkidle", timeout=90000)
+        time.sleep(3)
+
+    def close(self):
+        try:
+            if self._br:
+                self._br.close()
+            if self._pw:
+                self._pw.stop()
+        except Exception:
+            pass
+
+    def _post_browser(self, body):
+        res = self.page.evaluate("""async ([url, body]) => {
+            const r = await fetch(url, {method: 'POST', credentials: 'include',
+                headers: {'Content-Type': 'application/json; charset=UTF-8',
+                          'Accept': 'application/json, text/javascript, */*; q=0.01',
+                          'submissionid': 'mf_wfm_mainFrame_sbm_selectGdsDtlSrch',
+                          'sc-userid': 'SYSTEM', 'X-Requested-With': 'XMLHttpRequest'},
+                body: JSON.stringify(body)});
+            return {status: r.status, text: await r.text()};
+        }""", [SEARCH_API, body])
+        return res["status"], res["text"]
 
     def search(self, page, ymd_from, ymd_to, min_flbd, sido="", bid=""):
         gap = 2.5 + random.random() * 1.5 - (time.time() - self.last)
         if gap > 0:
             time.sleep(gap)
         self.last = time.time()
-        r = self.s.post(SEARCH_API, data=json.dumps(_body(page, ymd_from, ymd_to, min_flbd, sido, bid)),
-                        timeout=40, headers={"Content-Type": "application/json; charset=UTF-8"})
-        if r.status_code == 400:
-            raise BadRequest(r.text[:150])
-        r.raise_for_status()
-        j = r.json()
+        body = _body(page, ymd_from, ymd_to, min_flbd, sido, bid)
+        if self.page:
+            status, text = self._post_browser(body)
+        else:
+            r = self.s.post(SEARCH_API, data=json.dumps(body), timeout=40,
+                            headers={"Content-Type": "application/json; charset=UTF-8"})
+            status, text = r.status_code, r.text
+        if status == 400:
+            raise BadRequest(re.sub(r'.*"errorMessage":"([^"]{0,40}).*', r"\1", text[:300]))
+        if status >= 400:
+            raise RuntimeError(f"HTTP {status}")
+        j = json.loads(text)
         data = j.get("data") if isinstance(j, dict) else None
         if isinstance(data, dict) and data.get("ipcheck") is False:
             raise Blocked("법원경매 사이트가 접속을 일시 차단했습니다(ipcheck)")
@@ -213,31 +252,39 @@ def check(state, find_keywords, snippet, log, max_details=60, min_round=2, days=
     try:
         ca.warmup()
         log(f"[법원경매] 매각기일 {ymd_from}~{ymd_to}, 유찰 {min_flbd}회 이상 검색")
-        try:
-            total = run("전국")
-            log(f"[법원경매] 전국 {total:,}건")
-        except BadRequest as e:
-            log(f"[법원경매] 전국 한번에 검색 불가(400: {str(e)[:80]}) → 시도별 검색")
-            bids = [""]
+
+        def by_region():
             for code, name in SIDO.items():
-                for bid in list(bids):
-                    try:
-                        t = run(name, code, bid)
-                        log(f"   {name}{'(' + bid + ')' if bid else ''}: {t:,}건")
-                    except BadRequest as e2:
-                        if bids == [""]:
-                            log(f"   시도별도 400({str(e2)[:60]}) → 기일/기간입찰 나눠 검색")
-                            bids = ["000331", "000332"]
-                            for b2 in bids:
-                                t = run(name, code, b2)
-                                log(f"   {name}({b2}): {t:,}건")
-                        else:
-                            raise
+                t = run(name, code)
+                log(f"   {name}: {t:,}건")
+
+        done = False
+        for mode in ("직접요청", "브라우저"):
+            if mode == "브라우저":
+                log("[법원경매] 직접 요청이 거절되어 브라우저로 다시 시도")
+                ca.use_browser()
+            try:
+                total = run("전국")
+                log(f"[법원경매] ({mode}) 전국 {total:,}건")
+                done = True
+                break
+            except BadRequest as e:
+                log(f"[법원경매] ({mode}) 전국 검색 거절: {e}")
+            try:
+                by_region()
+                done = True
+                break
+            except BadRequest as e:
+                log(f"[법원경매] ({mode}) 시도별 검색도 거절: {e}")
+        if not done:
+            notes.append("법원경매 사이트가 자동 검색을 거절함 (해외 서버 접속 제한 추정)")
     except Blocked as e:
         notes.append(str(e))
         log(e)
     except Exception as e:
         notes.append(f"법원경매 확인 오류: {str(e)[:60]}")
         log("[법원경매] 오류:", e)
+    finally:
+        ca.close()
     st["alerted"] = list(alerted)[-3000:]
     return hits, checked, notes

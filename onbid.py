@@ -153,15 +153,8 @@ def _fetch_one(key, path, log, prpt, extra):
 
 
 def fetch(key, path, log, extra=None):
-    """재산유형 묶음 요청 → 0건이면 재산유형별로 나눠 다시 요청 (묶음 요청을 안 받는 경우 대비)"""
-    out, calls = _fetch_one(key, path, log, ALL_PRPT, extra)
-    if out:
-        return out, calls
-    for code in PRPT_CODES:
-        rows, c = _fetch_one(key, path, log, code, extra)
-        out += rows
-        calls += c
-    return out, calls
+    """재산유형 10개를 쉼표로 묶어 한 번에 요청 (2026-10-25 실제 동작 확인)"""
+    return _fetch_one(key, path, log, ALL_PRPT, extra)
 
 
 def _bid_period(x):
@@ -252,8 +245,8 @@ def check(state, find_keywords, snippet, log, keywords=("공제조합",)):
     for label, path in APIS.items():
         found = {}
         try:
-            # 1) 물건명 검색 (키워드별)
-            for kw in keywords:
+            # 1) 물건명 검색 (키워드별) - 전체 목록을 받는 동산은 생략
+            for kw in (keywords if label not in FULL_SCAN else []):
                 rows, calls = fetch(key, path, log, {"onbidCltrNm": kw.strip()})
                 log(f"[온비드 {label}] 물건명 '{kw.strip()}' 검색: {len(rows)}건 ({calls}회 호출)")
                 for x in rows:
@@ -273,15 +266,27 @@ def check(state, find_keywords, snippet, log, keywords=("공제조합",)):
         if label not in FULL_SCAN:
             checked += len(found)
 
+        # 같은 물건(물건관리번호)이 회차별로 여러 건 → 1건으로 (가장 가까운 입찰일정)
+        groups = {}
         for (mng, cdtn), x in found.items():
+            if find_keywords(" ".join(str(v) for v in x.values() if isinstance(v, (str, int, float)))):
+                groups.setdefault(mng, []).append(x)
+        picked = {}
+        for mng, xs in groups.items():
+            xs.sort(key=lambda v: str(v.get("cltrBidBgngDt") or "9"))
+            keys = [f"{mng}|{v.get('pbctCdtnNo')}" for v in xs]
+            if all(k in alerted for k in keys):
+                continue
+            alerted.update(keys)
+            first = xs[0]
+            picked[(mng, first.get("pbctCdtnNo"))] = first
+
+        for (mng, cdtn), x in picked.items():
             text = " ".join(str(v) for v in x.values() if isinstance(v, (str, int, float)))
             kw = find_keywords(text)
             if not kw:
                 continue
             k = f"{mng}|{cdtn}"
-            if k in alerted:
-                continue
-            alerted.add(k)
             nm = str(x.get("onbidCltrNm") or "")
             key_name, place = _split_name(nm)
             aee = _num(x.get("apslEvlAmt"))
@@ -311,5 +316,5 @@ def check(state, find_keywords, snippet, log, keywords=("공제조합",)):
                 "price": f"{_man(lws)}" + (f" ({rate}%)" if rate else ""),
             })
             log("  ★ 온비드 키워드 발견:", mng, nm)
-    st["alerted"] = list(alerted)[-3000:]
+    st["alerted"] = list(alerted)[-15000:]
     return hits, checked, notes
