@@ -115,6 +115,14 @@ def _call(key, path, params, log):
         j = r.json()
     except Exception:
         raise OnbidError(f"응답 해석 실패(HTTP {r.status_code}): {text[:120]}")
+    # 인증키 오류는 JSON 이라도 OpenAPI_ServiceResponse / returnReasonCode 로 옴
+    rc = _find(j, "returnReasonCode")
+    if rc not in (None, "", "00"):
+        msg = _find(j, "errMsg") or _find(j, "returnAuthMsg") or ""
+        hint = {"30": "인증키 미등록",
+                "22": "하루 호출 한도 초과", "20": "서비스 접근 거부(활용신청 확인)",
+                "31": "인증키 기한 만료"}.get(str(rc), "")
+        raise OnbidError(f"{hint or msg} (코드 {rc})")
     code = _find(j, "resultCode")
     code = None if code is None else str(code).zfill(2)
     if code == "03":
@@ -200,7 +208,10 @@ def check(state, find_keywords, snippet, log, keywords=("공제조합",)):
     st = state.setdefault("onbid", {"alerted": []})
     alerted = set(st["alerted"])
     hits, notes, checked = [], [], 0
-    key = os.getenv("DATA_GO_KR_KEY", "")
+    key = os.getenv("DATA_GO_KR_KEY", "").strip()
+    if "%" in key:                       # Encoding 키를 넣은 경우 → Decoding 키로 변환
+        from urllib.parse import unquote
+        key = unquote(key)
     if not key:
         notes.append("온비드: DATA_GO_KR_KEY 미설정으로 생략")
         return hits, checked, notes

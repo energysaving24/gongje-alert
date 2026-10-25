@@ -30,14 +30,23 @@ class Blocked(Exception):
     pass
 
 
-def _body(page, ymd_from, ymd_to, min_flbd):
+SIDO = {"11": "서울", "26": "부산", "27": "대구", "28": "인천", "29": "광주", "30": "대전", "31": "울산",
+        "36": "세종", "41": "경기", "42": "강원", "51": "강원특별", "43": "충북", "44": "충남",
+        "45": "전북", "52": "전북특별", "46": "전남", "47": "경북", "48": "경남", "50": "제주"}
+
+
+class BadRequest(Exception):
+    pass
+
+
+def _body(page, ymd_from, ymd_to, min_flbd, sido="", bid=""):
     return {
         "dma_pageInfo": {"pageNo": page, "pageSize": PAGE_SIZE, "bfPageNo": "", "startRowNo": "",
                          "totalCnt": "", "totalYn": "Y", "groupTotalCount": ""},
         "dma_srchGdsDtlSrchInfo": {
-            "rletDspslSpcCondCd": "", "bidDvsCd": "", "mvprpRletDvsCd": "00031R",
+            "rletDspslSpcCondCd": "", "bidDvsCd": bid, "mvprpRletDvsCd": "00031R",
             "cortAuctnSrchCondCd": "0004601",
-            "rprsAdongSdCd": "", "rprsAdongSggCd": "", "rprsAdongEmdCd": "",
+            "rprsAdongSdCd": sido, "rprsAdongSggCd": "", "rprsAdongEmdCd": "",
             "rdnmSdCd": "", "rdnmSggCd": "", "rdnmNo": "",
             "mvprpDspslPlcAdongSdCd": "", "mvprpDspslPlcAdongSggCd": "", "mvprpDspslPlcAdongEmdCd": "",
             "rdDspslPlcAdongSdCd": "", "rdDspslPlcAdongSggCd": "", "rdDspslPlcAdongEmdCd": "",
@@ -49,7 +58,7 @@ def _body(page, ymd_from, ymd_to, min_flbd):
             "objctArDtsMin": "", "objctArDtsMax": "",
             "mvprpArtclKndCd": "", "mvprpArtclNm": "", "mvprpAtchmPlcTypCd": "",
             "notifyLoc": "off", "lafjOrderBy": "", "pgmId": "PGJ151F01", "csNo": "",
-            "cortStDvs": "1", "statNum": 1,
+            "cortStDvs": "2" if sido else "1", "statNum": 1,
             "bidBgngYmd": ymd_from, "bidEndYmd": ymd_to, "dspslDxdyYmd": "",
             "fstDspslHm": "", "scndDspslHm": "", "thrdDspslHm": "", "fothDspslHm": "",
             "dspslPlcNm": "", "lwsDspslPrcMin": "", "lwsDspslPrcMax": "",
@@ -79,13 +88,15 @@ class CourtAuction:
     def warmup(self):
         self.s.get(SEARCH_PAGE, timeout=30)
 
-    def search(self, page, ymd_from, ymd_to, min_flbd):
+    def search(self, page, ymd_from, ymd_to, min_flbd, sido="", bid=""):
         gap = 2.5 + random.random() * 1.5 - (time.time() - self.last)
         if gap > 0:
             time.sleep(gap)
         self.last = time.time()
-        r = self.s.post(SEARCH_API, data=json.dumps(_body(page, ymd_from, ymd_to, min_flbd)), timeout=40,
-                        headers={"Content-Type": "application/json; charset=UTF-8"})
+        r = self.s.post(SEARCH_API, data=json.dumps(_body(page, ymd_from, ymd_to, min_flbd, sido, bid)),
+                        timeout=40, headers={"Content-Type": "application/json; charset=UTF-8"})
+        if r.status_code == 400:
+            raise BadRequest(r.text[:150])
         r.raise_for_status()
         j = r.json()
         data = j.get("data") if isinstance(j, dict) else None
@@ -138,56 +149,85 @@ def check(state, find_keywords, snippet, log, max_details=60, min_round=2, days=
     min_flbd = max(0, min_round - 1)                         # 2회차부터 = 유찰 1회 이상
 
     ca = CourtAuction(log)
-    try:
-        ca.warmup()
+
+    def handle(rows):
+        nonlocal checked
+        checked += len(rows)
+        for r in rows:
+            if min_flbd and _num(r.get("yuchalCnt")) < min_flbd:
+                continue
+            text = " ".join(strip(r.get(k)) for k in
+                            ("mulBigo", "pjbBuldList", "buldList", "buldNm", "jimokList", "dspslUsgNm")
+                            if r.get(k))
+            kw = find_keywords(text)
+            if not kw:
+                continue
+            key = r.get("docid") or f"{r.get('boCd')}|{r.get('saNo')}|{r.get('maemulSer')}"
+            if key in alerted:
+                continue
+            alerted.add(key)
+            aee, lws = _num(r.get("gamevalAmt")), _num(r.get("minmaePrice"))
+            sale = str(r.get("maeGiil") or "")
+            cs = strip(r.get("srnSaNo")) or strip(r.get("saNo"))
+            hits.append({
+                "source": "법원경매",
+                "kws": kw,
+                "url": CASE_PAGE,
+                "button": "경매사건검색",
+                "lines": [
+                    f"🔢 사건번호 {cs}",
+                    "     (사건검색에 입력)",
+                    f"⚖ {strip(r.get('jiwonNm'))} {strip(r.get('jpDeptNm'))}".rstrip(),
+                    f"📅 매각기일 {sale[2:4]}.{sale[4:6]}.{sale[6:8]}" if len(sale) == 8 else "",
+                    f"🏠 {_addr(r)[:34]}",
+                    f"💰 감정 {_man(aee)}" if aee else "",
+                    f"     → 최저 {_man(lws)} ({lws * 100 // aee}%)" if aee and lws else "",
+                    f"🔁 유찰 {_num(r.get('yuchalCnt'))}회",
+                    f"💬 {snippet(text, kw[0])[:60]}",
+                ],
+            })
+            log("  ★ 법원경매 키워드 발견:", cs, kw)
+
+    def run(label, sido="", bid=""):
+        """한 조건으로 끝 페이지까지 조회. 반환: 전체 건수"""
         page, total = 1, None
         while page <= max_pages:
-            rows, t = ca.search(page, ymd_from, ymd_to, min_flbd)
+            rows, t = ca.search(page, ymd_from, ymd_to, min_flbd, sido, bid)
             if total is None:
                 total = t
-                log(f"[법원경매] 매각기일 {ymd_from}~{ymd_to}, 유찰 {min_flbd}회 이상: 전국 {total:,}건")
             if not rows:
                 break
-            checked += len(rows)
-            for r in rows:
-                if min_flbd and _num(r.get("yuchalCnt")) < min_flbd:
-                    continue
-                text = " ".join(strip(r.get(k)) for k in
-                                ("mulBigo", "pjbBuldList", "buldList", "buldNm", "jimokList", "dspslUsgNm")
-                                if r.get(k))
-                kw = find_keywords(text)
-                if not kw:
-                    continue
-                key = r.get("docid") or f"{r.get('boCd')}|{r.get('saNo')}|{r.get('maemulSer')}"
-                if key in alerted:
-                    continue
-                alerted.add(key)
-                aee, lws = _num(r.get("gamevalAmt")), _num(r.get("minmaePrice"))
-                sale = str(r.get("maeGiil") or "")
-                cs = strip(r.get("srnSaNo")) or strip(r.get("saNo"))
-                hits.append({
-                    "source": "법원경매",
-                    "kws": kw,
-                    "url": CASE_PAGE,
-                    "button": "경매사건검색",
-                    "lines": [
-                        f"🔢 사건번호 {cs}",
-                        "     (사건검색에 입력)",
-                        f"⚖ {strip(r.get('jiwonNm'))} {strip(r.get('jpDeptNm'))}".rstrip(),
-                        f"📅 매각기일 {sale[2:4]}.{sale[4:6]}.{sale[6:8]}" if len(sale) == 8 else "",
-                        f"🏠 {_addr(r)[:34]}",
-                        f"💰 감정 {_man(aee)}" if aee else "",
-                        f"     → 최저 {_man(lws)} ({lws * 100 // aee}%)" if aee and lws else "",
-                        f"🔁 유찰 {_num(r.get('yuchalCnt'))}회",
-                        f"💬 {snippet(text, kw[0])[:60]}",
-                    ],
-                })
-                log("  ★ 법원경매 키워드 발견:", cs, kw)
+            handle(rows)
             if total and page * PAGE_SIZE >= total:
                 break
             page += 1
-        if total and page > max_pages and total > max_pages * PAGE_SIZE:
-            notes.append(f"법원경매 {total:,}건 중 {max_pages * PAGE_SIZE:,}건만 확인")
+        if total and total > max_pages * PAGE_SIZE:
+            notes.append(f"법원경매 {label} {total:,}건 중 일부만 확인")
+        return total or 0
+
+    try:
+        ca.warmup()
+        log(f"[법원경매] 매각기일 {ymd_from}~{ymd_to}, 유찰 {min_flbd}회 이상 검색")
+        try:
+            total = run("전국")
+            log(f"[법원경매] 전국 {total:,}건")
+        except BadRequest as e:
+            log(f"[법원경매] 전국 한번에 검색 불가(400: {str(e)[:80]}) → 시도별 검색")
+            bids = [""]
+            for code, name in SIDO.items():
+                for bid in list(bids):
+                    try:
+                        t = run(name, code, bid)
+                        log(f"   {name}{'(' + bid + ')' if bid else ''}: {t:,}건")
+                    except BadRequest as e2:
+                        if bids == [""]:
+                            log(f"   시도별도 400({str(e2)[:60]}) → 기일/기간입찰 나눠 검색")
+                            bids = ["000331", "000332"]
+                            for b2 in bids:
+                                t = run(name, code, b2)
+                                log(f"   {name}({b2}): {t:,}건")
+                        else:
+                            raise
     except Blocked as e:
         notes.append(str(e))
         log(e)
