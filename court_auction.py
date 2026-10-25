@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-법원경매정보(courtauction.go.kr) 부동산 매각공고 검사
+법원경매정보(courtauction.go.kr) 물건 검사  [2026-10-25 개편]
 
-- 매각공고 목록(이번 달·다음 달, 전국 법원) → 처음 보는 공고만 상세 조회
-- 상세의 사건번호·용도·소재지·비고 등 전체 내용에서 키워드 검색
-- 사이트가 과도한 호출 시 IP를 차단하므로 호출 간격 2~3초, 1회 실행당 상세 조회 상한을 둔다
+예전 방식(매각공고 목록 → 공고 상세)은 전국 공고가 몇 건만 조회되는 문제가 있어
+사이트의 '물건상세검색'(PGJ151) 기능으로 바꿈.
+
+- 조건: 전국 · 부동산 · 매각기일 오늘~N일 후(기본 14일) · 유찰 1회 이상(=2회차 입찰부터)
+- 결과 목록의 비고(mulBigo)·물건내역·소재지 등에서 키워드 검색
+- 이미 알린 물건(docid)은 다시 알리지 않음
+- 사이트가 과도한 호출 시 IP를 차단하므로 호출 간격 2.5~4초, 실행당 최대 페이지 수 제한
 """
 import json
 import random
@@ -15,21 +19,49 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 BASE = "https://www.courtauction.go.kr"
-NOTICE_PAGE = BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ143M01.xml&pgjId=143M01"
-LIST_API = BASE + "/pgj/pgj143/selectRletDspslPbanc.on"
-DETAIL_API = BASE + "/pgj/pgj143/selectRletDspslPbancDtl.on"
+SEARCH_PAGE = BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml&pgjId=151F00"
+SEARCH_API = BASE + "/pgj/pgjsearch/searchControllerMain.on"
 CASE_PAGE = BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ159M00.xml&pgjId=159M00"   # 경매사건검색
 KST = timezone(timedelta(hours=9))
+PAGE_SIZE = 100          # 사이트가 허용하는 값: 10/20/50/100
 
 
 class Blocked(Exception):
     pass
 
 
+def _body(page, ymd_from, ymd_to, min_flbd):
+    return {
+        "dma_pageInfo": {"pageNo": page, "pageSize": PAGE_SIZE, "bfPageNo": "", "startRowNo": "",
+                         "totalCnt": "", "totalYn": "Y", "groupTotalCount": ""},
+        "dma_srchGdsDtlSrchInfo": {
+            "rletDspslSpcCondCd": "", "bidDvsCd": "", "mvprpRletDvsCd": "00031R",
+            "cortAuctnSrchCondCd": "0004601",
+            "rprsAdongSdCd": "", "rprsAdongSggCd": "", "rprsAdongEmdCd": "",
+            "rdnmSdCd": "", "rdnmSggCd": "", "rdnmNo": "",
+            "mvprpDspslPlcAdongSdCd": "", "mvprpDspslPlcAdongSggCd": "", "mvprpDspslPlcAdongEmdCd": "",
+            "rdDspslPlcAdongSdCd": "", "rdDspslPlcAdongSggCd": "", "rdDspslPlcAdongEmdCd": "",
+            "cortOfcCd": "", "jdbnCd": "", "execrOfcDvsCd": "",
+            "lclDspslGdsLstUsgCd": "", "mclDspslGdsLstUsgCd": "", "sclDspslGdsLstUsgCd": "",
+            "cortAuctnMbrsId": "", "aeeEvlAmtMin": "", "aeeEvlAmtMax": "",
+            "lwsDspslPrcRateMin": "", "lwsDspslPrcRateMax": "",
+            "flbdNcntMin": str(min_flbd) if min_flbd else "", "flbdNcntMax": "",
+            "objctArDtsMin": "", "objctArDtsMax": "",
+            "mvprpArtclKndCd": "", "mvprpArtclNm": "", "mvprpAtchmPlcTypCd": "",
+            "notifyLoc": "off", "lafjOrderBy": "", "pgmId": "PGJ151F01", "csNo": "",
+            "cortStDvs": "1", "statNum": 1,
+            "bidBgngYmd": ymd_from, "bidEndYmd": ymd_to, "dspslDxdyYmd": "",
+            "fstDspslHm": "", "scndDspslHm": "", "thrdDspslHm": "", "fothDspslHm": "",
+            "dspslPlcNm": "", "lwsDspslPrcMin": "", "lwsDspslPrcMax": "",
+            "grbxTypCd": "", "gdsVendNm": "", "fuelKndCd": "",
+            "carMdyrMax": "", "carMdyrMin": "", "carMdlNm": "", "sideDvsCd": "",
+        },
+    }
+
+
 class CourtAuction:
-    def __init__(self, log, max_details=60):
+    def __init__(self, log):
         self.log = log
-        self.max_details = max_details
         self.s = requests.Session()
         self.s.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -37,20 +69,22 @@ class CourtAuction:
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Accept-Language": "ko-KR,ko;q=0.9",
             "Origin": BASE,
-            "Referer": NOTICE_PAGE,
+            "Referer": SEARCH_PAGE,
             "X-Requested-With": "XMLHttpRequest",
+            "submissionid": "mf_wfm_mainFrame_sbm_selectGdsDtlSrch",
+            "sc-userid": "SYSTEM",
         })
         self.last = 0
 
-    def _wait(self):
-        gap = 2.0 + random.random() * 1.5 - (time.time() - self.last)
+    def warmup(self):
+        self.s.get(SEARCH_PAGE, timeout=30)
+
+    def search(self, page, ymd_from, ymd_to, min_flbd):
+        gap = 2.5 + random.random() * 1.5 - (time.time() - self.last)
         if gap > 0:
             time.sleep(gap)
         self.last = time.time()
-
-    def _post(self, url, body):
-        self._wait()
-        r = self.s.post(url, data=json.dumps(body), timeout=30,
+        r = self.s.post(SEARCH_API, data=json.dumps(_body(page, ymd_from, ymd_to, min_flbd)), timeout=40,
                         headers={"Content-Type": "application/json; charset=UTF-8"})
         r.raise_for_status()
         j = r.json()
@@ -59,41 +93,14 @@ class CourtAuction:
             raise Blocked("법원경매 사이트가 접속을 일시 차단했습니다(ipcheck)")
         if isinstance(j, dict) and isinstance(j.get("errors"), dict) and j["errors"].get("errorMessage"):
             raise RuntimeError(j["errors"]["errorMessage"])
-        return j
-
-    def warmup(self):
-        self.s.get(NOTICE_PAGE, timeout=30)
-
-    def list_notices(self, yyyymm):
-        j = self._post(LIST_API, {"dma_srchDspslPbanc": {
-            "srchYmd": yyyymm, "cortOfcCd": "", "bidDvsCd": "", "srchBtnYn": "Y"}})
-        return (j.get("data") or {}).get("dlt_rletDspslPbancLst") or []
-
-    def notice_detail(self, row):
-        body = {"dma_srchGnrlPbanc": {
-            "cortOfcCd": row.get("cortOfcCd", ""),
-            "dspslDxdyYmd": row.get("dspslDxdyYmd", ""),
-            "bidBgngYmd": row.get("bidBgngYmd", "") or "",
-            "bidEndYmd": row.get("bidEndYmd", "") or "",
-            "jdbnCd": row.get("jdbnCd", ""),
-            "cortAuctnJdbnNm": row.get("cortAuctnJdbnNm", "") or "",
-            "jdbnTelno": row.get("jdbnTelno", "") or "",
-            "dspslPlcNm": row.get("dspslPlcNm", "") or "",
-            "fstDspslHm": row.get("fstDspslHm", "") or "",
-            "scndDspslHm": row.get("scndDspslHm", "") or "",
-            "thrdDspslHm": row.get("thrdDspslHm", "") or "",
-            "fothDspslHm": row.get("fothDspslHm", "") or "",
-            "bidDvsCd": row.get("bidDvsCd", "") or row.get("intgCd", "") or "",
-        }}
-        j = self._post(DETAIL_API, body)
-        data = j.get("data") or {}
-        res = data.get("result") if isinstance(data.get("result"), dict) else {}
-        pb = ((res.get("dspslPbanc") or {}).get("pbancInfo") or {}) if res else {}
-        return pb.get("lst") or data.get("dlt_gnrlPbancLst") or []
-
-
-def notice_key(row):
-    return "|".join(str(row.get(k, "")) for k in ("cortOfcCd", "dspslDxdyYmd", "cortAuctnJdbnNm", "bidBgngYmd"))
+        data = data or {}
+        rows = data.get("dlt_srchResult") or []
+        info = data.get("dma_pageInfo") or {}
+        try:
+            total = int(str(info.get("totalCnt") or info.get("groupTotalCount") or 0))
+        except Exception:
+            total = 0
+        return rows, total
 
 
 def _num(v):
@@ -101,22 +108,6 @@ def _num(v):
         return int(re.sub(r"[^0-9]", "", str(v)) or 0)
     except Exception:
         return 0
-
-
-def bid_round(it):
-    """
-    몇 번째 입찰인지 추정 (1 = 최초 입찰)
-    - 유찰횟수 항목이 있으면 그 값 + 1
-    - 없으면 최저매각가격 < 감정평가액 이면 유찰된 물건(2회차 이상)으로 판단
-      (법원경매 최초 입찰의 최저가는 감정가와 같고, 유찰될 때마다 20~30% 낮아짐)
-    """
-    for k in ("yuchalCnt", "flbdNcnt", "flbdCnt", "usbdNft"):
-        if str(it.get(k, "")).strip() != "":
-            return _num(it[k]) + 1
-    aee, lws = _num(it.get("aeeEvlAmt")), _num(it.get("lwsDspslPrc"))
-    if aee and lws:
-        return 2 if lws < aee else 1
-    return None   # 판단 불가 → 놓치지 않도록 알림 대상에 포함
 
 
 def _man(v):
@@ -130,74 +121,78 @@ def strip(s):
     return re.sub(r"<[^>]+>", " ", str(s or "")).strip()
 
 
-def check(state, find_keywords, snippet, log, max_details=60, min_round=2):
-    """반환: hits(list), checked(int), notes(list)"""
-    st = state.setdefault("court_auction", {"seen": [], "alerted": []})
-    seen, alerted = set(st["seen"]), set(st["alerted"])
-    hits, notes, checked, skipped_first = [], [], 0, 0
-    ca = CourtAuction(log, max_details)
+def _addr(r):
+    a = " ".join(strip(r.get(k)) for k in ("hjguSido", "hjguSigu", "hjguDong", "daepyoLotno") if r.get(k))
+    return a or strip(r.get("printSt")) or strip(r.get("realSt"))
+
+
+def check(state, find_keywords, snippet, log, max_details=60, min_round=2, days=14, max_pages=50):
+    """반환: hits, checked, notes  (max_details 는 예전 설정과의 호환용, 사용 안 함)"""
+    st = state.setdefault("court_auction", {})
+    st.pop("seen", None)                                     # 예전 방식 기록 정리
+    alerted = set(st.get("alerted", []))
+    hits, notes, checked = [], [], 0
+    today = datetime.now(KST).date()
+    ymd_from = today.strftime("%Y%m%d")
+    ymd_to = (today + timedelta(days=days)).strftime("%Y%m%d")
+    min_flbd = max(0, min_round - 1)                         # 2회차부터 = 유찰 1회 이상
+
+    ca = CourtAuction(log)
     try:
         ca.warmup()
-        today = datetime.now(KST).date()
-        months = sorted({today.strftime("%Y%m"), (today.replace(day=1) + timedelta(days=32)).strftime("%Y%m")})
-        rows = []
-        for m in months:
-            rows += ca.list_notices(m)
-        # 이미 지난 매각기일 제외, 새 공고만
-        rows = [r for r in rows if str(r.get("dspslDxdyYmd", "")) >= today.strftime("%Y%m%d")]
-        rows = list({notice_key(r): r for r in rows}.values())   # 중복 제거
-        new = [r for r in rows if notice_key(r) not in seen]
-        new.sort(key=lambda r: str(r.get("dspslDxdyYmd", "")))
-        log(f"[법원경매] 매각공고 {len(rows)}건 중 새 공고 {len(new)}건")
-        if len(new) > max_details:
-            notes.append(f"법원경매 새 공고 {len(new)}건 중 {max_details}건만 확인(나머지는 다음 실행)")
-        for r in new[:max_details]:
-            items = ca.notice_detail(r)
-            checked += 1
-            seen.add(notice_key(r))
-            court = r.get("cortOfcNm") or r.get("cortSptNm") or ""
-            sale = str(r.get("dspslDxdyYmd", ""))
-            for it in items:
-                text = " ".join(strip(v) for v in it.values() if isinstance(v, (str, int, float)))
-                kw = find_keywords(text)
-                cs = strip(it.get("csNo"))
-                key = f"{court}|{cs}|{it.get('dspslSeq', '')}"
-                rnd = bid_round(it)
-                if kw and rnd == 1 and min_round > 1:
-                    skipped_first += 1
-                    log("  - 공제조합 있으나 최초 입찰이라 제외:", court, cs)
+        page, total = 1, None
+        while page <= max_pages:
+            rows, t = ca.search(page, ymd_from, ymd_to, min_flbd)
+            if total is None:
+                total = t
+                log(f"[법원경매] 매각기일 {ymd_from}~{ymd_to}, 유찰 {min_flbd}회 이상: 전국 {total:,}건")
+            if not rows:
+                break
+            checked += len(rows)
+            for r in rows:
+                if min_flbd and _num(r.get("yuchalCnt")) < min_flbd:
                     continue
-                if kw and key not in alerted:
-                    alerted.add(key)
-                    aee, lws = _num(it.get("aeeEvlAmt")), _num(it.get("lwsDspslPrc"))
-                    price = f"감정 {aee:,} → 최저 {lws:,}원 ({lws * 100 // aee}%)" if aee and lws else ""
-                    hits.append({
-                        "source": "법원경매",
-                        "url": CASE_PAGE,
-                        "button": "경매사건검색",
-                        "kws": kw,
-                        "lines": [
-                            f"🔢 사건번호 {cs}",
-                            f"     (사건검색에 입력)",
-                            f"⚖ {court} {strip(r.get('cortAuctnJdbnNm'))}",
-                            f"📅 매각기일 {sale[2:4]}.{sale[4:6]}.{sale[6:8]}",
-                            ("🏠 " + " · ".join(x for x in (strip(it.get('usgNm')), strip(it.get('st'))[:28]) if x)),
-                            f"💰 감정 {_man(aee)}" if aee else "",
-                            f"     → 최저 {_man(lws)} ({lws * 100 // aee}%)" if aee and lws else "",
-                            f"🔁 {rnd}회차 이상 입찰" if rnd and rnd > 1 else "",
-                            f"💬 {snippet(strip(it.get('dspslRmk')) or text, kw[0])[:60]}",
-                        ],
-                    })
-                    log("  ★ 법원경매 키워드 발견:", court, cs)
+                text = " ".join(strip(r.get(k)) for k in
+                                ("mulBigo", "pjbBuldList", "buldList", "buldNm", "jimokList", "dspslUsgNm")
+                                if r.get(k))
+                kw = find_keywords(text)
+                if not kw:
+                    continue
+                key = r.get("docid") or f"{r.get('boCd')}|{r.get('saNo')}|{r.get('maemulSer')}"
+                if key in alerted:
+                    continue
+                alerted.add(key)
+                aee, lws = _num(r.get("gamevalAmt")), _num(r.get("minmaePrice"))
+                sale = str(r.get("maeGiil") or "")
+                cs = strip(r.get("srnSaNo")) or strip(r.get("saNo"))
+                hits.append({
+                    "source": "법원경매",
+                    "kws": kw,
+                    "url": CASE_PAGE,
+                    "button": "경매사건검색",
+                    "lines": [
+                        f"🔢 사건번호 {cs}",
+                        "     (사건검색에 입력)",
+                        f"⚖ {strip(r.get('jiwonNm'))} {strip(r.get('jpDeptNm'))}".rstrip(),
+                        f"📅 매각기일 {sale[2:4]}.{sale[4:6]}.{sale[6:8]}" if len(sale) == 8 else "",
+                        f"🏠 {_addr(r)[:34]}",
+                        f"💰 감정 {_man(aee)}" if aee else "",
+                        f"     → 최저 {_man(lws)} ({lws * 100 // aee}%)" if aee and lws else "",
+                        f"🔁 유찰 {_num(r.get('yuchalCnt'))}회",
+                        f"💬 {snippet(text, kw[0])[:60]}",
+                    ],
+                })
+                log("  ★ 법원경매 키워드 발견:", cs, kw)
+            if total and page * PAGE_SIZE >= total:
+                break
+            page += 1
+        if total and page > max_pages and total > max_pages * PAGE_SIZE:
+            notes.append(f"법원경매 {total:,}건 중 {max_pages * PAGE_SIZE:,}건만 확인")
     except Blocked as e:
         notes.append(str(e))
         log(e)
     except Exception as e:
         notes.append(f"법원경매 확인 오류: {str(e)[:60]}")
         log("[법원경매] 오류:", e)
-    if skipped_first:
-        notes.append(f"법원경매 최초 입찰 {skipped_first}건 제외(2회차부터 알림)")
-    today_s = datetime.now(KST).strftime("%Y%m%d")
-    st["seen"] = [k for k in seen if k.split("|")[1] >= today_s]   # 매각기일 지난 공고는 기록에서 정리
-    st["alerted"] = list(alerted)[-2000:]
+    st["alerted"] = list(alerted)[-3000:]
     return hits, checked, notes

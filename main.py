@@ -795,7 +795,7 @@ def main():
         jobs.append(("회생파산 자산매각", "공고", lambda: check_scourt(state)))
     if "court_auction" in SOURCES:
         import court_auction
-        jobs.append(("법원경매", "공고",
+        jobs.append(("법원경매", "물건",
                      lambda: court_auction.check(state, find_keywords, snippet, log,
                                                  int(os.getenv("AUCTION_MAX_DETAILS", "60")),
                                                  int(os.getenv("AUCTION_MIN_ROUND", "2")))))

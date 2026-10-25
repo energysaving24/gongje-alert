@@ -49,7 +49,8 @@ def detail_url(label, x):
     if not all(vals.values()):
         return ONBID_HOME
     return DETAIL_URL.format(grp=SCREEN_GROUP.get(label, "0001"), **vals)
-PAGE = int(os.getenv("ONBID_PAGE_SIZE", "500"))
+PAGE = int(os.getenv("ONBID_PAGE_SIZE", "100"))
+_shown = set()   # 진단용: API별 첫 응답을 로그에 한 번 출력
 MAX_PAGES = 60          # 안전장치 (500건 × 60페이지 = 3만건)
 
 
@@ -101,6 +102,10 @@ def _call(key, path, params, log):
             time.sleep(10)
     time.sleep(0.3)   # 초당 10건 제한
     text = r.text.strip()
+    if path not in _shown:
+        _shown.add(path)
+        safe = {k: v for k, v in params.items()}
+        log(f"   [진단] {path.split('/')[1]} 요청 {safe} → HTTP {r.status_code}: {text[:250]}")
     if text.startswith("<"):
         # 인증키 오류 등은 XML로 오는 경우가 있음
         m = re.search(r"<(?:returnReasonCode|resultCode)>(\d+)<", text)
@@ -124,12 +129,11 @@ def _call(key, path, params, log):
     return rows, total
 
 
-def fetch(key, path, log, extra=None):
-    """수의계약여부 N/Y 각각 전체 페이지 수집"""
+def _fetch_one(key, path, log, prpt, extra):
     out, calls = [], 0
     for pvct in ("N", "Y"):
         for page in range(1, MAX_PAGES + 1):
-            params = {"pageNo": page, "numOfRows": PAGE, "prptDivCd": ALL_PRPT, "pvctTrgtYn": pvct}
+            params = {"pageNo": page, "numOfRows": PAGE, "prptDivCd": prpt, "pvctTrgtYn": pvct}
             if extra:
                 params.update(extra)
             rows, total = _call(key, path, params, log)
@@ -137,6 +141,18 @@ def fetch(key, path, log, extra=None):
             out += rows
             if len(rows) < PAGE or page * PAGE >= total:
                 break
+    return out, calls
+
+
+def fetch(key, path, log, extra=None):
+    """재산유형 묶음 요청 → 0건이면 재산유형별로 나눠 다시 요청 (묶음 요청을 안 받는 경우 대비)"""
+    out, calls = _fetch_one(key, path, log, ALL_PRPT, extra)
+    if out:
+        return out, calls
+    for code in PRPT_CODES:
+        rows, c = _fetch_one(key, path, log, code, extra)
+        out += rows
+        calls += c
     return out, calls
 
 
