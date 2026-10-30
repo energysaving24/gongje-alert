@@ -1,8 +1,9 @@
-# 📋 2026-10-29 발견 목록 (2건)
+# 📋 2026-10-31 발견 목록 (3건)
 
 공제조합·출자증권 물건 먼저, 그 안에서 할인율 큰(최저가 비율 낮은) 순서입니다.
 
 | # | 출처 | 물건 | 최저가 | 입찰/매각 | 위치 | 링크 |
 |---|---|---|---|---|---|---|
-| 1 | 온비드 동산 | 주식 | 3,000만원 | 11/09~11/09 | 소유의 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0013&onbidCltrno=2074022&onbidPbancNo=911427&pbctNo=10113973&pbctCdtnNo=6261822) |
-| 2 | 온비드 동산 | 주식 | 5,000만원 | 11/09~11/09 | 소유의 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0013&onbidCltrno=2074084&onbidPbancNo=911449&pbctNo=10114054&pbctCdtnNo=6261958) |
+| 1 | 회생파산 | 파산재단 자산(부실채권) 매각공고 |  |  | 서울회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35993) |
+| 2 | 회생파산 | 자산매각공고 |  |  | 의정부지방법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=35988) |
+| 3 | 회생파산 | 자산매각 및 환가포기 공고 |  |  | 서울회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36003) |
