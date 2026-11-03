@@ -1,7 +1,21 @@
-# 📋 2026-11-03 발견 목록 (1건)
+# 📋 2026-11-04 발견 목록 (15건)
 
 공제조합·출자증권 물건 먼저, 그 안에서 할인율 큰(최저가 비율 낮은) 순서입니다.
 
 | # | 출처 | 물건 | 최저가 | 입찰/매각 | 위치 | 링크 |
 |---|---|---|---|---|---|---|
-| 1 | 온비드 동산 | 콤바인(동양물산, TH750) | 1,148만원 (80%) | 11/03~11/24 |  | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0004&onbidCltrno=2048958&onbidPbancNo=911829&pbctNo=10115119&pbctCdtnNo=6266380) |
+| 1 | 온비드 동산 | 전문건설공제조합출자증권 5좌 [ 오좌권1매(나제35624호) ] | 475만원 (100%) | 12/07~12/09 | 남구 남대구세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=1944991&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267492) |
+| 2 | 온비드 동산 | 전문건설공제조합출자증권 25좌 [ 오좌권1매(나제39977호), 일십좌… | 2,378만원 (100%) | 12/07~12/09 | 포항시 포항세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=1955711&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267493) |
+| 3 | 온비드 동산 | 건설공제조합출자증권 10좌 [ 일십좌권1매(더제082081호) ] | 1,563만원 (100%) | 12/07~12/09 | 수원시 인천경기지역본부 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2020968&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267513) |
+| 4 | 온비드 동산 | 건설공제조합출자증권 26좌 [ 일좌권1매(거제096972호), 오좌권1… | 4,065만원 (100%) | 12/07~12/09 | 수원시 인천경기지역본부 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2021590&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267514) |
+| 5 | 온비드 동산 | 전문건설공제조합출자증권 21좌 [ 일좌권1매(가제273279호), 일십… | 2,012만원 (100%) | 12/07~12/09 | 경주시 경주세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2051835&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267517) |
+| 6 | 온비드 동산 | 건설공제조합출자증권 5좌 [ 오좌권1매(너제029341호) ] | 789만원 (100%) | 12/07~12/09 | 경주시 경주세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2069059&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267518) |
+| 7 | 온비드 동산 | 소방산업공제조합출자증권 37좌 [ 일좌권2매(가제006723~00672… | 1,961만원 (100%) | 12/07~12/09 | 경주시 경주세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2069223&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267519) |
+| 8 | 온비드 동산 | 전문건설공제조합출자증권 48좌 [ 일좌권3매(가제358696~35869… | 4,600만원 (100%) | 12/07~12/09 | 포항시 포항세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2073307&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267520) |
+| 9 | 온비드 동산 | 건설공제조합출자증권 47좌 [ 일좌권2매(거제094603~094604호… | 7,422만원 (100%) | 12/07~12/09 | 상주시 상주세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2074001&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267521) |
+| 10 | 온비드 동산 | 전문건설공제조합출자증권 19좌 [ 일좌권4매(가제315338~31534… | 1,821만원 (100%) | 12/07~12/09 | 영주시 영주세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2075557&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267522) |
+| 11 | 온비드 동산 | 전문건설공제조합출자증권 8좌 [ 일좌권3매(가제272160~272162… | 766만원 (100%) | 12/07~12/09 | 남구 남대구세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2074035&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6267523) |
+| 12 | 온비드 동산 | 건설공제조합출자증권 12좌 [ 일좌권2매(거제084640~084641호… | 1,883만원 (100%) | 12/07~12/09 | 기장군 기장지사 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2062381&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6217727) |
+| 13 | 온비드 동산 | 건설공제조합출자증권 67좌 [ 일좌권2매(거제087337~087338호… | 1억 515만원 (100%) | 12/07~12/09 | 경주시 경주지사 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2064523&onbidPbancNo=912038&pbctNo=10099058&pbctCdtnNo=6236850) |
+| 14 | 회생파산 | 주식매각공고 |  |  | 광주회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36034) |
+| 15 | 회생파산 | 주식매각공고 |  |  | 광주회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36035) |
