@@ -1,7 +1,7 @@
-# 📋 2026-11-20 발견 목록 (1건)
+# 📋 2026-11-21 발견 목록 (1건)
 
 공제조합·출자증권 물건 먼저, 그 안에서 할인율 큰(최저가 비율 낮은) 순서입니다.
 
 | # | 출처 | 물건 | 최저가 | 입찰/매각 | 위치 | 링크 |
 |---|---|---|---|---|---|---|
-| 1 | 회생파산 | 주식자산 매각 공고 |  |  | 부산회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36336) |
+| 1 | 회생파산 | 파산재단 자산 매각(포기) 공고 |  |  | 서울회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36347) |
