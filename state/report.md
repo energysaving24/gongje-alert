@@ -1,8 +1,23 @@
-# 📋 2026-11-25 발견 목록 (2건)
+# 📋 2026-11-26 발견 목록 (17건)
 
 공제조합·출자증권 물건 먼저, 그 안에서 할인율 큰(최저가 비율 낮은) 순서입니다.
 
 | # | 출처 | 물건 | 최저가 | 입찰/매각 | 위치 | 링크 |
 |---|---|---|---|---|---|---|
-| 1 | 회생파산 | 주식 매각 및 환가포기 공고 |  |  | 의정부지방법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36363) |
-| 2 | 온비드 동산 | 발행주식(비상장 보통주 5,100주) | 255만원 | 12/07~12/07 | (주)유니모토바이브 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0013&onbidCltrno=2083138&onbidPbancNo=915323&pbctNo=10123029&pbctCdtnNo=6295046) |
+| 1 | 온비드 동산 | 전문건설공제조합 출자증권 총5좌[5좌권(1매): 나제003556호] | 479만원 (100%) | 01/18~01/20 | 강서구 강서세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2056831&onbidPbancNo=915779&pbctNo=10101550&pbctCdtnNo=6297729) |
+| 2 | 온비드 동산 | 전문건설공제조합 출자증권 21좌 (1좌권: 가제70855호 , 10좌권… | 2,012만원 (100%) | 01/18~01/20 | 유성구 북대전세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2076829&onbidPbancNo=915783&pbctNo=10101478&pbctCdtnNo=6297542) |
+| 3 | 온비드 동산 | 엔지니어링공제조합 출자증권 23좌 (1좌권: 가제005981호, 가제0… | 2,167만원 (100%) | 01/18~01/20 | 논산시 논산세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2078175&onbidPbancNo=915783&pbctNo=10101478&pbctCdtnNo=6297543) |
+| 4 | 온비드 동산 | 건설공제조합 출자증권 7좌 (1좌권: 거제096217호, 거제09621… | 1,105만원 (100%) | 01/18~01/20 | 논산시 논산세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2078293&onbidPbancNo=915783&pbctNo=10101478&pbctCdtnNo=6297544) |
+| 5 | 온비드 동산 | 건설공제조합 출자증권 32좌(거029608, 거093180, 더0314… | 5,053만원 (100%) | 01/18~01/20 | 김해시 김해세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2077987&onbidPbancNo=915670&pbctNo=10101454&pbctCdtnNo=6296684) |
+| 6 | 온비드 동산 | 건설공제조합 출자증권 총 4좌(1좌권 4매(거005402, 거06038… | 631만원 (100%) | 01/18~01/20 | 수영구 수영세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2077643&onbidPbancNo=915632&pbctNo=10101466&pbctCdtnNo=6296377) |
+| 7 | 온비드 동산 | 건설공제조합 출자증권 총 31좌(1좌권 1매(거091293), 5좌권 … | 4,895만원 (100%) | 01/18~01/20 | 금정구 금정세무서 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2077816&onbidPbancNo=915632&pbctNo=10101466&pbctCdtnNo=6296378) |
+| 8 | 온비드 동산 | 전문건설공제조합 출자증권 20좌(나제37225호, 나제61962호, 다… | 1,916만원 (100%) | 01/18~01/20 | 창원시 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2064571&onbidPbancNo=915670&pbctNo=10101454&pbctCdtnNo=6223589) |
+| 9 | 회생파산 | 파산재단 채권 등  매각 및 포기공고 |  |  | 서울회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36407) |
+| 10 | 온비드 동산 | 비상장주식 70,000주 (미발행주식) | 210만원 (1%) | 01/18~01/20 | 청주시 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=1909783&onbidPbancNo=915759&pbctNo=10101435&pbctCdtnNo=6297257) |
+| 11 | 온비드 동산 | 비상장주식 30,000주 (미발행주식) | 367만원 (1%) | 01/18~01/20 | 제주시 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=1909781&onbidPbancNo=915759&pbctNo=10101435&pbctCdtnNo=6297258) |
+| 12 | 온비드 동산 | 비상장주식 주권미발행 보통주 19,600주 | 5,957만원 (10%) | 01/18~01/20 | 하남시 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2011886&onbidPbancNo=915759&pbctNo=10101435&pbctCdtnNo=6297262) |
+| 13 | 온비드 동산 | 비상장주식 주권미발행 보통주 19,600주 | 2,503만원 (10%) | 01/18~01/20 | 사상구 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0007&onbidCltrno=2011889&onbidPbancNo=915759&pbctNo=10101435&pbctCdtnNo=6297263) |
+| 14 | 회생파산 | 주식 매각 및 환가포기 공고 |  |  | 의정부지방법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36363) |
+| 15 | 회생파산 | 자산 매각 및 포기 공고 |  |  | 서울회생법원 | [공고 보기](https://www.scourt.go.kr/portal/notice/realestate/RealNoticeView.work?pageIndex=1&seq_id=36395) |
+| 16 | 온비드 동산 | 발행주식(비상장 보통주 5,100주) | 255만원 | 12/07~12/07 | (주)유니모토바이브 | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0013&onbidCltrno=2083138&onbidPbancNo=915323&pbctNo=10123029&pbctCdtnNo=6295046) |
+| 17 | 온비드 동산 | 길사랑장학사업단 주식회사 지분 65% (수량: 13,000주) | 20억 9,274만원 | 11/26~12/28 |  | [물건 상세보기](https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?cltrScrnGrpCd=0003&cltrPrptDivCd=0005&onbidCltrno=2084021&onbidPbancNo=915735&pbctNo=10123815&pbctCdtnNo=6297522) |
